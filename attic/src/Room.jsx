@@ -3,25 +3,14 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { MeshReflectorMaterial, Mask, useMask, Line, Html } from '@react-three/drei'
 import { makeLaminate, makePaint, makeForest } from './textures'
-import { fmt } from './params'
+import { fmt, K } from './params'
+import { quad, wallX } from './geom'
+import Hatch from './Hatch'
+import Radiator from './Radiator'
+import Extension from './Extension'
+import Exterior from './Exterior'
 
 /* ---------- геометрия ---------- */
-
-// Четырёхугольник с UV в метрах; лицевая сторона всегда смотрит внутрь комнаты,
-// поэтому снаружи ближние стены не рисуются и комнату видно «как в разрезе».
-function quad(pts, center) {
-  const [a, b, c, d] = pts.map((p) => new THREE.Vector3(...p))
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.Float32BufferAttribute([...a.toArray(), ...b.toArray(), ...c.toArray(), ...d.toArray()], 3))
-  const u = a.distanceTo(b)
-  const v = a.distanceTo(d)
-  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, v, 0, v], 2))
-  const n = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(d, a))
-  const toC = new THREE.Vector3().subVectors(center, a)
-  g.setIndex(n.dot(toC) >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2])
-  g.computeVertexNormals()
-  return g
-}
 
 // Торцевая стена (профиль мансарды) с проёмом окна или двери
 function gableShape(d, { window, doorX }) {
@@ -66,14 +55,14 @@ function Paint({ map, color, active }) {
 
 /* ---------- окно ---------- */
 
-function WindowUnit({ d, mode }) {
+function WindowUnit({ d, mode, maskId = 1 }) {
   const { winW: w, winH: h, winSill: s, winSections: n } = d
   const D = 0.16 // толщина стены в откосе
   const pvc = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f4f5f2', roughness: 0.38 }), [])
   const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e9e9e9', roughness: 0.25, metalness: 0.4 }), [])
   const glass = useMemo(() => new THREE.MeshStandardMaterial({ color: '#d6e6f2', roughness: 0.05, transparent: true, opacity: 0.14, depthWrite: false }), [])
   const forest = useMemo(() => makeForest(), [])
-  const stencil = useMask(1)
+  const stencil = useMask(maskId)
 
   const B = ({ p, sz, m = pvc }) => (
     <mesh position={p} material={m} castShadow receiveShadow>
@@ -125,7 +114,7 @@ function WindowUnit({ d, mode }) {
         )
       })}
       {/* вид за окном показывается только сквозь проём */}
-      <Mask id={1} position={[0, s + h / 2, -D - 0.01]}>
+      <Mask id={maskId} position={[0, s + h / 2, -D - 0.01]}>
         <planeGeometry args={[w, h]} />
       </Mask>
       <mesh position={[0, 1.4, -3.5]} renderOrder={2}>
@@ -138,9 +127,9 @@ function WindowUnit({ d, mode }) {
 
 /* ---------- дверь ---------- */
 
-function DoorUnit({ d }) {
+function DoorUnit({ d, open }) {
   const { doorW: w, doorH: h, doorX: x, L } = d
-  const D = 0.12
+  const D = K.doorWallT
   const wood = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e3da', roughness: 0.55 }), [])
   const frame = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f1eee8', roughness: 0.5 }), [])
   const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b9b9b9', roughness: 0.25, metalness: 0.85 }), [])
@@ -150,38 +139,59 @@ function DoorUnit({ d }) {
     </mesh>
   )
   const zc = L + D / 2
+  const leaf = useRef()
+  const ang = useRef(open ? 1.45 : 0)
+  useFrame((_, dt) => {
+    ang.current += ((open ? 1.45 : 0) - ang.current) * Math.min(1, dt * 5)
+    if (leaf.current) leaf.current.rotation.y = ang.current
+  })
+  const lw = w - 0.065
+  const hx = x - w / 2 + 0.0325 // ось петель
   return (
     <group>
       {/* коробка */}
       <B p={[x - w / 2 + 0.015, h / 2, zc]} sz={[0.03, h, D]} />
       <B p={[x + w / 2 - 0.015, h / 2, zc]} sz={[0.03, h, D]} />
       <B p={[x, h - 0.015, zc]} sz={[w, 0.03, D]} />
-      {/* полотно */}
-      <B p={[x, (h - 0.035) / 2 + 0.005, zc]} sz={[w - 0.065, h - 0.04, 0.04]} m={wood} />
-      {/* наличники со стороны комнаты */}
-      <B p={[x - w / 2 - 0.02, (h + 0.06) / 2, L - 0.006]} sz={[0.07, h + 0.06, 0.012]} />
-      <B p={[x + w / 2 + 0.02, (h + 0.06) / 2, L - 0.006]} sz={[0.07, h + 0.06, 0.012]} />
-      <B p={[x, h + 0.025, L - 0.006]} sz={[w + 0.14, 0.07, 0.012]} />
-      {/* ручка */}
-      <mesh position={[x + w / 2 - 0.09, 1.0, zc - 0.025]} rotation={[Math.PI / 2, 0, 0]} material={metal}>
-        <cylinderGeometry args={[0.025, 0.025, 0.01, 24]} />
-      </mesh>
-      <B p={[x + w / 2 - 0.13, 1.0, zc - 0.05]} sz={[0.12, 0.018, 0.018]} m={metal} />
+      {/* полотно на петлях, открывается в кабинет */}
+      <group ref={leaf} position={[hx, 0, zc - 0.02]}>
+        <B p={[lw / 2, (h - 0.035) / 2 + 0.005, 0]} sz={[lw, h - 0.04, 0.04]} m={wood} />
+        {[-1, 1].map((k) => (
+          <group key={k}>
+            <mesh position={[lw - 0.09, 1.0, k * 0.025]} rotation={[Math.PI / 2, 0, 0]} material={metal}>
+              <cylinderGeometry args={[0.025, 0.025, 0.01, 24]} />
+            </mesh>
+            <B p={[lw - 0.13, 1.0, k * 0.05]} sz={[0.12, 0.018, 0.018]} m={metal} />
+          </group>
+        ))}
+      </group>
+      {/* наличники с обеих сторон стены */}
+      {[L - 0.006, L + D + 0.006].map((z) => (
+        <group key={z}>
+          <B p={[x - w / 2 - 0.02, (h + 0.06) / 2, z]} sz={[0.07, h + 0.06, 0.012]} />
+          <B p={[x + w / 2 + 0.02, (h + 0.06) / 2, z]} sz={[0.07, h + 0.06, 0.012]} />
+          <B p={[x, h + 0.025, z]} sz={[w + 0.14, 0.07, 0.012]} />
+        </group>
+      ))}
     </group>
   )
 }
 
 /* ---------- свет ---------- */
 
-function Lights({ d, mode }) {
+function Lights({ d, mode, cut }) {
   const day = mode === 'day'
   const dl = useRef()
   useLayoutEffect(() => {
-    dl.current.target.position.set(0, 0.3, d.L * 0.5)
+    dl.current.target.position.set(0, 0.3, d.zG * 0.5)
     dl.current.target.updateMatrixWorld()
-  }, [d.L])
-  const n = Math.max(2, Math.round(d.L / 1.25))
-  const zs = Array.from({ length: n }, (_, i) => (d.L * (i + 0.5)) / n)
+  }, [d.zG])
+  // точечные светильники: в кабинете и в спальне отдельно
+  const row = (z0, len) => {
+    const n = Math.max(2, Math.round(len / 1.25))
+    return Array.from({ length: n }, (_, i) => z0 + (len * (i + 0.5)) / n)
+  }
+  const zs = [...(cut ? [] : row(0, d.L)), ...row(d.L + K.doorWallT, d.L2 - K.doorWallT), ...row(d.zG, d.L3)]
   return (
     <>
       <ambientLight color={day ? '#fbf8f3' : '#9aa6c4'} intensity={day ? 1.25 : 0.18} />
@@ -195,12 +205,12 @@ function Lights({ d, mode }) {
         shadow-mapSize={[2048, 2048]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
-        shadow-camera-left={-6}
-        shadow-camera-right={6}
-        shadow-camera-top={6}
-        shadow-camera-bottom={-6}
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
         shadow-camera-near={0.5}
-        shadow-camera-far={20}
+        shadow-camera-far={34}
       />
       {zs.map((z) => (
         <group key={z}>
@@ -212,7 +222,7 @@ function Lights({ d, mode }) {
             <circleGeometry args={[0.045, 40]} />
             <meshBasicMaterial color={day ? '#dcdcdc' : '#fff4df'} toneMapped={false} />
           </mesh>
-          {!day && <pointLight position={[0, d.cH - 0.12, z]} color="#ffe4c4" intensity={1.7} decay={2} />}
+          {!day && <pointLight position={[0, d.cH - 0.12, z]} color="#ffe4c4" intensity={1.5} decay={2} />}
         </group>
       ))}
     </>
@@ -241,17 +251,19 @@ function Dim({ a, b, text, color = '#ffb547' }) {
   )
 }
 
-function Dimensions({ d }) {
-  const { L, W, kH, cH, cW, winW, winH, winSill, doorW, doorH, doorX } = d
+function Dimensions({ d, doorWall, utility }) {
+  const { L, W, kH, cH, cW, winW, winH, winSill, doorW, doorH, doorX, zG, xC, zC, xS, zS, xE } = d
   const z = 0.03
   const nx = d.rise / d.slant
   const ny = -d.run / d.slant
   const o = 0.07
   const xh = cW / 2 > winW / 2 + 0.06 ? (cW / 2 + winW / 2) / 2 : Math.max(cW / 2 - 0.06, 0)
   const win = '#6fd3ff'
+  const ext = '#c99bff'
   return (
     <group>
       <Dim a={[-W / 2 + 0.12, 0.012, 0]} b={[-W / 2 + 0.12, 0.012, L]} text={`${fmt(L)} м`} />
+      <Dim a={[(xC + xS) / 2, 0.012, L]} b={[(xC + xS) / 2, 0.012, zG]} text={`${fmt(d.L2)} м до купе`} color={ext} />
       <Dim a={[-W / 2, 0.012, 0.25]} b={[W / 2, 0.012, 0.25]} text={`${fmt(W)} м`} />
       <Dim a={[-W / 2 + 0.05, 0, z]} b={[-W / 2 + 0.05, kH, z]} text={`${fmt(kH)}`} />
       <Dim a={[-W / 2 + nx * o, kH + ny * o, z]} b={[-cW / 2 + nx * o, cH + ny * o, z]} text={`${fmt(d.slant)} · ${d.angle.toFixed(0)}°`} />
@@ -259,55 +271,95 @@ function Dimensions({ d }) {
       <Dim a={[xh, 0, z]} b={[xh, cH, z]} text={`h ${fmt(cH)}`} />
       <Dim a={[-winW / 2, winSill - 0.07, 0.2]} b={[winW / 2, winSill - 0.07, 0.2]} text={`окно ${fmt(winW)} × ${fmt(winH)}`} color={win} />
       <Dim a={[-winW / 2 + 0.3, 0, 0.2]} b={[-winW / 2 + 0.3, winSill, 0.2]} text={fmt(winSill)} color={win} />
-      <Dim a={[doorX - doorW / 2, doorH + 0.14, L - 0.03]} b={[doorX + doorW / 2, doorH + 0.14, L - 0.03]} text={`дверь ${fmt(doorW)}`} color={win} />
-      <Dim a={[doorX - doorW / 2 - 0.13, 0, L - 0.03]} b={[doorX - doorW / 2 - 0.13, doorH, L - 0.03]} text={fmt(doorH)} color={win} />
+      {doorWall && (
+        <>
+          <Dim a={[doorX - doorW / 2, doorH + 0.14, L - 0.03]} b={[doorX + doorW / 2, doorH + 0.14, L - 0.03]} text={`дверь ${fmt(doorW)}`} color={win} />
+          <Dim a={[doorX - doorW / 2 - 0.13, 0, L - 0.03]} b={[doorX - doorW / 2 - 0.13, doorH, L - 0.03]} text={fmt(doorH)} color={win} />
+        </>
+      )}
+      <Dim a={[(xC + xS) / 2, 0.012, zG]} b={[(xC + xS) / 2, 0.012, d.zEnd]} text={`${fmt(d.L3)} м кухня`} color={ext} />
+      <Dim a={[-winW / 2, winSill - 0.07, d.zEnd - 0.2]} b={[winW / 2, winSill - 0.07, d.zEnd - 0.2]} text={`окно ${fmt(winW)} × ${fmt(winH)}`} color={win} />
+      <Dim a={[-W / 2, 0.012, zC - 0.12]} b={[xC, 0.012, zC - 0.12]} text={`санузел ${fmt(d.cabW)}`} color={ext} />
+      <Dim a={[-W / 2 + 0.1, 0.012, zC]} b={[-W / 2 + 0.1, 0.012, zG]} text={fmt(d.cabP)} color={ext} />
+      <Dim a={[xS, 1.08, zS - 0.03]} b={[W / 2, 1.08, zS - 0.03]} text={`лестница ${fmt(d.stL)}`} color={ext} />
+      <Dim a={[xS - 0.08, 0.012, zS]} b={[xS - 0.08, 0.012, zG]} text={fmt(d.stW)} color={ext} />
+      {utility && (
+        <>
+          <Dim a={[W / 2, 0.012, 0.4]} b={[xE, 0.012, 0.4]} text={`подсобка ${fmt(d.utilDepth)}`} color="#9fd27a" />
+          <Dim a={[-W / 2, 0.012, 0.4]} b={[-xE, 0.012, 0.4]} text={`подсобка ${fmt(d.utilDepth)}`} color="#9fd27a" />
+        </>
+      )}
     </group>
   )
 }
 
 /* ---------- комната ---------- */
 
-export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, setHl }) {
-  const { L, W, kH, cH, cW } = d
+export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, setHl, view }) {
+  const { L, W, kH, cH, cW, zEnd, zG } = d
+  const { doorWall, doorOpen, slideOpen, cabOpen, hatchOpen, roof, utility, facade, interactive, ceilCut, radHide } = view
   const paintA = useMemo(() => makePaint(3), [])
   const paintB = useMemo(() => makePaint(11), [])
   const floorTex = useMemo(() => makeLaminate(floorKey), [floorKey])
 
   const geoms = useMemo(() => {
-    const center = new THREE.Vector3(0, cH / 2, L / 2)
+    const center = new THREE.Vector3(0, cH / 2, zEnd / 2)
+    // пол на всю длину с вырезом под лестницу; контур в координатах (x, −z), затем поворот в горизонталь
+    const f = new THREE.Shape()
+    f.moveTo(-W / 2, 0)
+    f.lineTo(W / 2, 0)
+    f.lineTo(W / 2, -d.zS)
+    f.lineTo(d.xS, -d.zS)
+    f.lineTo(d.xS, -d.zG)
+    f.lineTo(W / 2, -d.zG)
+    f.lineTo(W / 2, -zEnd)
+    f.lineTo(-W / 2, -zEnd)
+    f.closePath()
     return {
-      floor: quad([[-W / 2, 0, 0], [W / 2, 0, 0], [W / 2, 0, L], [-W / 2, 0, L]], center),
-      kneeL: quad([[-W / 2, 0, 0], [-W / 2, 0, L], [-W / 2, kH, L], [-W / 2, kH, 0]], center),
-      kneeR: quad([[W / 2, 0, 0], [W / 2, 0, L], [W / 2, kH, L], [W / 2, kH, 0]], center),
-      slopeL: quad([[-W / 2, kH, 0], [-W / 2, kH, L], [-cW / 2, cH, L], [-cW / 2, cH, 0]], center),
-      slopeR: quad([[W / 2, kH, 0], [W / 2, kH, L], [cW / 2, cH, L], [cW / 2, cH, 0]], center),
+      floor: new THREE.ShapeGeometry(f),
+      kneeL: wallX(-W / 2, 0, zG, kH, utility ? { z0: d.hz0, z1: d.hz1, y0: d.hatchY, y1: d.hatchY + d.hatchH } : null, 1),
+      kneeR: quad([[W / 2, 0, 0], [W / 2, 0, zG], [W / 2, kH, zG], [W / 2, kH, 0]], center),
+      slopeL: quad([[-W / 2, kH, 0], [-W / 2, kH, zG], [-cW / 2, cH, zG], [-cW / 2, cH, 0]], center),
+      slopeR: quad([[W / 2, kH, 0], [W / 2, kH, zG], [cW / 2, cH, zG], [cW / 2, cH, 0]], center),
+      // кухня — отдельные плоскости со своим цветом
+      backKneeL: quad([[-W / 2, 0, zG], [-W / 2, 0, zEnd], [-W / 2, kH, zEnd], [-W / 2, kH, zG]], center),
+      backKneeR: quad([[W / 2, 0, zG], [W / 2, 0, zEnd], [W / 2, kH, zEnd], [W / 2, kH, zG]], center),
+      backSlopeL: quad([[-W / 2, kH, zG], [-W / 2, kH, zEnd], [-cW / 2, cH, zEnd], [-cW / 2, cH, zG]], center),
+      backSlopeR: quad([[W / 2, kH, zG], [W / 2, kH, zEnd], [cW / 2, cH, zEnd], [cW / 2, cH, zG]], center),
       windowWall: gableShape(d, { window: true }),
-      // стена с дверью повёрнута на 180°, поэтому ось X у неё зеркальна
+      // сторона кабинета повёрнута на 180°, поэтому ось X у неё зеркальна
       doorWall: gableShape(d, { doorX: -d.doorX }),
+      doorWallBack: gableShape(d, { doorX: d.doorX }),
+      endWall: gableShape(d, { window: true }),
     }
-  }, [d])
+  }, [d, utility])
 
+  // при ремонте натяжной потолок кабинета снимается — остаётся только над спальней и кухней
+  const zStart = ceilCut ? d.L + K.doorWallT : 0
   const winRef = useRef()
-  const doorRef = useRef()
-  // проёмы прячутся вместе со стеной, когда камера смотрит на неё снаружи
+  const win2Ref = useRef()
+  // без фасада окна прячутся вместе со стеной, когда камера смотрит на неё снаружи
   useFrame(({ camera }) => {
-    if (winRef.current) winRef.current.visible = camera.position.z > -0.05
-    if (doorRef.current) doorRef.current.visible = camera.position.z < L + 0.05
+    if (winRef.current) winRef.current.visible = facade || camera.position.z > -0.05
+    if (win2Ref.current) win2Ref.current.visible = facade || camera.position.z < zEnd + 0.05
   })
 
-  const ev = (k) => ({
-    onPointerOver: (e) => {
-      e.stopPropagation()
-      setHl(k)
-    },
-    onPointerOut: () => setHl((h) => (h === k ? null : h)),
-  })
+  const ev = (k) =>
+    interactive
+      ? {
+          onPointerOver: (e) => {
+            e.stopPropagation()
+            setHl(k)
+          },
+          onPointerOut: () => setHl((h) => (h === k ? null : h)),
+        }
+      : {}
 
   return (
     <group>
-      <Lights d={d} mode={mode} />
+      <Lights d={d} mode={mode} cut={ceilCut} />
 
-      <mesh geometry={geoms.floor} receiveShadow {...ev('floor')}>
+      <mesh geometry={geoms.floor} rotation={[-Math.PI / 2, 0, 0]} receiveShadow {...ev('floor')}>
         <meshStandardMaterial map={floorTex} roughness={0.48} metalness={0} emissive={hl === 'floor' ? HL : '#000'} emissiveIntensity={hl === 'floor' ? 0.3 : 0} />
       </mesh>
 
@@ -325,13 +377,21 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
       <mesh geometry={geoms.windowWall} castShadow receiveShadow {...ev('windowWall')}>
         <Paint map={paintA} color={colors.windowWall} active={hl === 'windowWall'} />
       </mesh>
-      <mesh geometry={geoms.doorWall} position={[0, 0, L]} rotation={[0, Math.PI, 0]} castShadow receiveShadow {...ev('doorWall')}>
-        <Paint map={paintB} color={colors.doorWall} active={hl === 'doorWall'} />
-      </mesh>
+      {doorWall && (
+        <>
+          <mesh geometry={geoms.doorWall} position={[0, 0, L]} rotation={[0, Math.PI, 0]} castShadow receiveShadow {...ev('doorWall')}>
+            <Paint map={paintB} color={colors.doorWall} active={hl === 'doorWall'} />
+          </mesh>
+          <mesh geometry={geoms.doorWallBack} position={[0, 0, L + K.doorWallT]} castShadow receiveShadow {...ev('doorWall')}>
+            <Paint map={paintB} color={colors.doorWall} active={hl === 'doorWall'} />
+          </mesh>
+          <DoorUnit d={d} open={doorOpen} />
+        </>
+      )}
 
-      {/* натяжной потолок: глянец с отражением */}
-      <mesh position={[0, cH, L / 2]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow {...ev('ceiling')}>
-        <planeGeometry args={[cW, L]} />
+      {/* натяжной потолок: глянец с отражением, по всей длине */}
+      <mesh position={[0, cH, (zEnd + zStart) / 2]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow {...ev('ceiling')}>
+        <planeGeometry args={[cW, zEnd - zStart]} />
         {gloss ? (
           <MeshReflectorMaterial
             resolution={1024}
@@ -353,12 +413,28 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
 
       <group ref={winRef}>
         <WindowUnit d={d} mode={mode} />
-      </group>
-      <group ref={doorRef}>
-        <DoorUnit d={d} />
+        {!radHide && <Radiator />}
       </group>
 
-      {showDims && <Dimensions d={d} />}
+      {/* кухня: боковые и косые перекрытия, торец с таким же окном */}
+      {['backKneeL', 'backKneeR', 'backSlopeL', 'backSlopeR'].map((k) => (
+        <mesh key={k} geometry={geoms[k]} castShadow receiveShadow>
+          <Paint map={k.includes('Knee') ? paintA : paintB} color={colors.backRoom} />
+        </mesh>
+      ))}
+      <mesh geometry={geoms.endWall} position={[0, 0, zEnd]} rotation={[0, Math.PI, 0]} castShadow receiveShadow>
+        <Paint map={paintA} color={colors.backRoom} />
+      </mesh>
+      <group ref={win2Ref} position={[0, 0, zEnd]} rotation={[0, Math.PI, 0]}>
+        <WindowUnit d={d} mode={mode} maskId={2} />
+        <Radiator />
+      </group>
+
+      {utility && <Hatch d={d} open={hatchOpen} />}
+      <Extension d={d} slideOpen={slideOpen} cabOpen={cabOpen} />
+      <Exterior d={d} roof={roof} utility={utility} facade={facade} />
+
+      {showDims && <Dimensions d={d} doorWall={doorWall} utility={utility} />}
     </group>
   )
 }

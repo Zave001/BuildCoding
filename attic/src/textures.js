@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 
 // Детерминированный генератор случайных чисел — текстуры одинаковы при каждой загрузке
-function rng(seed) {
+export function rng(seed) {
   let s = seed >>> 0 || 1
   return () => {
     s = (Math.imul(s, 1664525) + 1013904223) >>> 0
@@ -9,9 +9,9 @@ function rng(seed) {
   }
 }
 
-const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)))
+export const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)))
 
-function toTexture(canvas, repeatX, repeatY) {
+export function toTexture(canvas, repeatX, repeatY) {
   const t = new THREE.CanvasTexture(canvas)
   t.wrapS = t.wrapT = THREE.RepeatWrapping
   t.repeat.set(repeatX, repeatY)
@@ -195,4 +195,190 @@ export function makeForest() {
   const t = new THREE.CanvasTexture(c)
   t.colorSpace = THREE.SRGBColorSpace
   return t
+}
+
+function canvas(w, h) {
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  return [c, c.getContext('2d')]
+}
+
+function noise(g, w, h, amp, seed) {
+  const r = rng(seed)
+  const img = g.getImageData(0, 0, w, h)
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (r() - 0.5) * amp
+    img.data[i] = clamp(img.data[i] + n)
+    img.data[i + 1] = clamp(img.data[i + 1] + n)
+    img.data[i + 2] = clamp(img.data[i + 2] + n)
+  }
+  g.putImageData(img, 0, 0)
+}
+
+/** Виниловый сайдинг «корабельный брус», бежево-розовый как на фото. Плитка 3,0 × 1,2 м, ламели по 0,2 м с двойным изломом. */
+export function makeSiding() {
+  const PX = 400
+  const [c, g] = canvas(3 * PX, 1.2 * PX)
+  const lap = 0.2 * PX
+  g.fillStyle = '#cdb9ad'
+  g.fillRect(0, 0, c.width, c.height)
+  for (let y = 0; y < c.height; y += lap) {
+    for (let k = 0; k < 2; k++) {
+      const y0 = y + (k * lap) / 2
+      const gr = g.createLinearGradient(0, y0, 0, y0 + lap / 2)
+      gr.addColorStop(0, 'rgba(255,255,255,0.10)')
+      gr.addColorStop(0.75, 'rgba(0,0,0,0.0)')
+      gr.addColorStop(1, 'rgba(60,35,25,0.22)')
+      g.fillStyle = gr
+      g.fillRect(0, y0, c.width, lap / 2)
+    }
+    g.fillStyle = 'rgba(70,45,35,0.45)'
+    g.fillRect(0, y + lap - 2, c.width, 2)
+  }
+  // H-профиль стыка панелей
+  g.fillStyle = '#d6c4b8'
+  g.fillRect(0, 0, 0.04 * PX, c.height)
+  g.fillStyle = 'rgba(60,40,30,0.25)'
+  g.fillRect(0.04 * PX, 0, 2, c.height)
+  noise(g, c.width, c.height, 6, 5)
+  return toTexture(c, 1 / 3, 1 / 1.2)
+}
+
+/** Металлочерепица (зелёная, RAL 6005): волна 0,185 м, ступень 0,35 м. Возвращает цвет и карту рельефа. */
+export function makeMetalTile() {
+  const PX = 400
+  const waves = 6
+  const ww = 0.185 * PX
+  const sh = 0.35 * PX
+  const [c, g] = canvas(Math.round(waves * ww), Math.round(sh))
+  const [b, gb] = canvas(c.width, c.height)
+  const img = g.createImageData(c.width, c.height)
+  const bimg = gb.createImageData(c.width, c.height)
+  const base = [44, 86, 60]
+  for (let y = 0; y < c.height; y++) {
+    const t = y / c.height // 0 — верх ступени (к коньку), 1 — нижний край ступени
+    const step = t < 0.12 ? 0.35 + t * 4 : 1 - (t - 0.12) * 0.55
+    for (let x = 0; x < c.width; x++) {
+      const w = Math.sin(((x % ww) / ww) * Math.PI * 2)
+      const h = (0.5 + 0.5 * w) * (0.55 + 0.45 * step)
+      const light = 0.62 + 0.3 * Math.cos(((x % ww) / ww) * Math.PI * 2 - 0.9) * 0.5 + 0.25 * step
+      const i = (y * c.width + x) * 4
+      img.data[i] = clamp(base[0] * light * 1.25)
+      img.data[i + 1] = clamp(base[1] * light * 1.25)
+      img.data[i + 2] = clamp(base[2] * light * 1.25)
+      img.data[i + 3] = 255
+      const v = clamp(h * 255)
+      bimg.data[i] = bimg.data[i + 1] = bimg.data[i + 2] = v
+      bimg.data[i + 3] = 255
+    }
+  }
+  g.putImageData(img, 0, 0)
+  gb.putImageData(bimg, 0, 0)
+  // тень от ступени
+  g.fillStyle = 'rgba(8,20,12,0.55)'
+  g.fillRect(0, c.height - 3, c.width, 3)
+  gb.fillStyle = '#000'
+  gb.fillRect(0, c.height - 2, c.width, 2)
+  const map = toTexture(c, 1 / (waves * 0.185), 1 / 0.35)
+  const bump = toTexture(b, 1 / (waves * 0.185), 1 / 0.35)
+  bump.colorSpace = THREE.NoColorSpace
+  return { map, bump }
+}
+
+/** Трапециевидный профлист для козырька: шаг 0,2 м, рёбра вдоль ската. */
+export function makeProfSheet() {
+  const PX = 400
+  const [c, g] = canvas(PX, 64)
+  const pitch = 0.2 * PX
+  for (let x = 0; x < PX; x++) {
+    const f = (x % pitch) / pitch
+    let l = 0.82
+    if (f < 0.12) l = 1.05
+    else if (f < 0.2) l = 0.6
+    else if (f > 0.9) l = 0.95
+    g.fillStyle = `rgb(${clamp(52 * l)},${clamp(98 * l)},${clamp(68 * l)})`
+    g.fillRect(x, 0, 1, 64)
+  }
+  noise(g, PX, 64, 4, 9)
+  return toTexture(c, 1, 1)
+}
+
+/** OSB для подсобных пространств. Плитка 1,25 × 1,25 м. */
+export function makeOSB() {
+  const S = 512
+  const [c, g] = canvas(S, S)
+  g.fillStyle = '#cdb994'
+  g.fillRect(0, 0, S, S)
+  const r = rng(77)
+  for (let i = 0; i < 1600; i++) {
+    const x = r() * S
+    const y = r() * S
+    const w = 10 + r() * 34
+    const h = 3 + r() * 8
+    const tone = r()
+    g.save()
+    g.translate(x, y)
+    g.rotate((r() - 0.5) * Math.PI)
+    g.fillStyle = tone < 0.4 ? `rgba(160,130,90,${0.2 + r() * 0.25})` : tone < 0.8 ? `rgba(228,210,175,${0.25 + r() * 0.3})` : `rgba(120,95,65,${0.15 + r() * 0.2})`
+    g.fillRect(-w / 2, -h / 2, w, h)
+    g.restore()
+  }
+  noise(g, S, S, 10, 78)
+  return toTexture(c, 1.6, 1.6)
+}
+
+/** Вагонка (подшивка ската изнутри подсобки и софиты). Доска 0,1 м. Плитка 1 × 2 м. */
+export function makeBoards(color = [214, 186, 140], seed = 21) {
+  const PX = 256
+  const [c, g] = canvas(PX, PX * 2)
+  const r = rng(seed)
+  const bw = 0.1 * PX
+  for (let x = 0; x < PX; x += bw) {
+    const j = (r() - 0.5) * 18
+    g.fillStyle = `rgb(${color.map((v) => clamp(v + j)).join(',')})`
+    g.fillRect(x, 0, bw, c.height)
+    for (let s = 0; s < 14; s++) {
+      g.strokeStyle = `rgba(120,85,45,${0.05 + r() * 0.08})`
+      g.lineWidth = 0.5 + r()
+      const xx = x + r() * bw
+      g.beginPath()
+      g.moveTo(xx, 0)
+      g.bezierCurveTo(xx + (r() - 0.5) * 6, c.height * 0.3, xx + (r() - 0.5) * 6, c.height * 0.7, xx, c.height)
+      g.stroke()
+    }
+    g.fillStyle = 'rgba(60,40,20,0.35)'
+    g.fillRect(x, 0, 1.5, c.height)
+  }
+  return toTexture(c, 1, 0.5)
+}
+
+/** Белый ПВХ с остатками синей защитной плёнки, которую не сняли при монтаже (как на фото). Плитка 1 × 1 м. */
+export function makeFilmTrim() {
+  const S = 512
+  const [c, g] = canvas(S, S)
+  g.fillStyle = '#f2f2ef'
+  g.fillRect(0, 0, S, S)
+  const r = rng(13)
+  for (let i = 0; i < 70; i++) {
+    const cx = r() * S
+    const cy = r() * S
+    const rad = 14 + r() * 60
+    g.fillStyle = `rgba(${150 + r() * 20},${172 + r() * 15},${196 + r() * 15},${0.75 + r() * 0.25})`
+    g.beginPath()
+    const n = 9
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2
+      const rr = rad * (0.45 + r() * 0.7)
+      const px = cx + Math.cos(a) * rr
+      const py = cy + Math.sin(a) * rr * (0.5 + r())
+      k ? g.lineTo(px, py) : g.moveTo(px, py)
+    }
+    g.closePath()
+    g.fill()
+    // надпись-рисунок плёнки
+    g.fillStyle = 'rgba(70,95,140,0.35)'
+    for (let k = 0; k < 3; k++) g.fillRect(cx - rad * 0.3 + r() * rad * 0.3, cy - rad * 0.2 + k * 7, 10 + r() * 14, 2)
+  }
+  return toTexture(c, 1, 1)
 }

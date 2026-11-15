@@ -13,6 +13,34 @@ export const DEFAULTS = {
   doorW: 0.8,
   doorH: 2.0,
   doorX: 0, // смещение двери от оси комнаты
+  // продолжение мансарды за стеной с дверью
+  L2: 4.65, // от стены с дверью до стеклянной стены-купе
+  cabW: 1.0, // санузел: ширина (у левого бока, если смотреть от двери на купе)
+  cabP: 0.25, // санузел: выступ перед стеклянной стеной
+  cabD: 1.2, // санузел: глубина за стеклянной стеной (выступает в кухню)
+  L3: 3.5, // кухня: от стеклянной стены до торца с окном
+  // дверь в подсобку в боковом перекрытии (слева, если смотреть от двери на кухню)
+  hatchOff: 2.3, // от лицевой стенки санузла до ближайшего края двери (вдоль комнаты)
+  hatchY: 0.3, // от пола до низа двери
+  hatchW: 0.5,
+  hatchH: 0.66,
+  stL: 2.3, // проём лестницы вдоль стены-купе (из правого угла, если смотреть от двери на купе)
+  stW: 1.0, // проём лестницы поперёк
+}
+
+// Постоянные конструктива (не редактируются в панели)
+export const K = {
+  winWallT: 0.16, // толщина стены с окном
+  doorWallT: 0.12, // толщина стены с дверью
+  roofT: 0.24, // толщина кровельного пирога
+  gableOv: 0.45, // свес кровли над фронтоном
+  eaveOv: 0.4, // свес кровли у карниза (вдоль ската)
+  plinth: 0.3, // фронтон ниже уровня пола мансарды (до козырька)
+  canopy: 1.5, // вынос козырька из профлиста
+  stairDrop: 2.64, // глубина лестничного проёма до площадки
+  stairSteps: 12,
+  slideTop: 2.0, // верх раздвижной двери купе
+  panelH: 0.85, // глухие белые панели внизу стены-купе
 }
 
 export const SURFACES = {
@@ -31,6 +59,7 @@ export const DEFAULT_COLORS = {
   ceiling: '#eef0f2',
   windowWall: '#bfd0c8',
   doorWall: '#c9d6cf',
+  backRoom: '#ddd6c6', // кухня: светлые бежевые обои (по фото)
 }
 
 export const fmt = (v, digits = 2) => v.toFixed(digits).replace('.', ',')
@@ -55,6 +84,45 @@ export function derive(raw) {
     if (ax >= p.W / 2) return p.kH
     return p.kH + ((p.W / 2 - ax) / run) * rise
   }
+
+  // продолжение: стеклянная стена, санузел, лестница
+  const zG = p.L + p.L2 // плоскость стеклянной стены-купе
+  const zEnd = zG + p.L3 // торцевая стена с окном в кухне
+  const zCabB = zG + p.cabD // задняя стенка санузла
+  if (p.cabD > p.L3 - 0.8) warnings.push('Санузел почти упирается в торцевую стену кухни.')
+  // от двери к купе смотрим вдоль +Z, поэтому «слева» на фото 2 — это +X
+  const xC = -p.W / 2 + p.cabW // стенка санузла со стороны прохода
+  const zC = zG - p.cabP // лицевая стенка санузла
+  const xS = p.W / 2 - p.stL // край лестничного проёма со стороны прохода (вход на лестницу)
+  const zS = zG - p.stW // передний край лестничного проёма (перила)
+  if (xS - xC < 0.6) warnings.push('Проход между лестницей и санузлом меньше 60 см.')
+  if (p.cabW < 0.7) warnings.push('Санузел уже 70 см — дверь не поместится.')
+
+  // дверь в подсобку: интервал по z на левой боковой стене
+  const hz1 = zC - p.hatchOff
+  const hz0 = hz1 - p.hatchW
+  if (hz0 < 0.1) warnings.push('Дверь в подсобку выходит за начало стены — уменьшите отступ.')
+  if (p.hatchY + p.hatchH > p.kH - 0.05) warnings.push('Дверь в подсобку выше бокового перекрытия.')
+
+  // арочная дверь санузла: максимальная высота под скатом
+  const cdW = Math.max(0.4, Math.min(0.6, p.cabW - 0.16))
+  const cdX0 = xC - 0.07 - cdW // проём у стенки со стороны прохода — там выше всего
+  const cdR = cdW / 2
+  let cdSpring = 2.0 - cdR
+  for (let i = 0; i <= 32; i++) {
+    const t = (i / 32) * Math.PI
+    cdSpring = Math.min(cdSpring, heightAt(cdX0 + cdR + cdR * Math.cos(t)) - 0.06 - cdR * Math.sin(t))
+  }
+  const cabDoor = { x0: cdX0, w: cdW, r: cdR, spring: cdSpring, top: cdSpring + cdR }
+  if (cdSpring < 1.1) warnings.push('Дверь санузла получается ниже 1,4 м — скат слишком низкий.')
+
+  // снаружи: продолжение ската до пола, конёк, подсобные пространства
+  const xE = p.W / 2 + (p.kH * run) / rise // скат касается уровня пола
+  const yR = p.cH + ((p.cW / 2) * rise) / run // конёк по внутренней линии ската
+  const utilDepth = xE - p.W / 2
+  const utilSect = 0.5 * p.kH * utilDepth
+  const roofLen = Math.hypot(xE, yR) + K.eaveOv
+  const roofZ = zEnd + 2 * (K.winWallT + K.gableOv)
 
   const winTop = p.winSill + p.winH
   if (winTop > Math.min(heightAt(-p.winW / 2), heightAt(p.winW / 2)) + 1e-6)
@@ -84,5 +152,34 @@ export function derive(raw) {
     floor: `${fmt(p.L)} × ${fmt(p.W)}`,
   }
 
-  return { ...p, run, rise, slant, angle, gable, areas, sizes, volume: gable * p.L, warnings, heightAt }
+  const ext = {
+    floor: p.W * p.L2 - p.stL * p.stW - p.cabW * p.cabP,
+    volume: gable * p.L2,
+    utilSect,
+    back: p.W * p.L3 - p.cabW * p.cabD,
+    backVolume: gable * p.L3,
+    utilVol: 2 * utilSect * zEnd,
+    utilFloor: 2 * utilDepth * zEnd,
+    roof: 2 * roofLen * roofZ,
+  }
+
+  // все помещения целиком: кабинет, спальня, кухня и санузел (проём лестницы не считается)
+  const cabinArea = p.cabW * (p.cabP + p.cabD)
+  const rooms = [
+    { name: 'Кабинет', size: `${fmt(p.L)} × ${fmt(p.W)}`, area: areas.floor },
+    { name: 'Спальня', size: `${fmt(p.L2)} × ${fmt(p.W)}`, area: ext.floor },
+    { name: 'Кухня', size: `${fmt(p.L3)} × ${fmt(p.W)}`, area: ext.back },
+    { name: 'Санузел', size: `${fmt(p.cabW)} × ${fmt(p.cabP + p.cabD)}`, area: cabinArea },
+  ]
+  const total = {
+    rooms,
+    area: rooms.reduce((s, r) => s + r.area, 0),
+    volume: gable * zEnd, // объём под скатами всей мансарды
+    length: zEnd, // от окна кабинета до окна кухни
+  }
+
+  return {
+    ...p, run, rise, slant, angle, gable, areas, sizes, volume: gable * p.L, warnings, heightAt,
+    zG, zEnd, zCabB, hz0, hz1, xC, zC, xS, zS, cabDoor, xE, yR, utilDepth, roofLen, ext, total,
+  }
 }
