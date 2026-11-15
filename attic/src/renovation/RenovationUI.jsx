@@ -4,16 +4,16 @@ import { fmtN } from './calc'
 import { layerList } from './Section3D'
 import { thicknessAtStage } from './stack'
 
-const setIn = (obj, path, value) => {
+export const setIn = (obj, path, value) => {
   const [k, ...rest] = path.split('.')
   return { ...obj, [k]: rest.length ? setIn(obj[k] ?? {}, rest.join('.'), value) : value }
 }
 const getIn = (obj, path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj)
 
-const Ctx = createContext(null)
+export const Ctx = createContext(null)
 
 // Поля — на уровне модуля: иначе при каждом вводе они пересоздавались бы и терялся фокус
-function Num({ label, path, step = 1, min = 0, unit, disabled }) {
+export function Num({ label, path, step = 1, min = 0, unit, disabled }) {
   const { cfg, set } = useContext(Ctx)
   return (
     <label className="field">
@@ -22,7 +22,7 @@ function Num({ label, path, step = 1, min = 0, unit, disabled }) {
     </label>
   )
 }
-function Sel({ label, path, options, onPick }) {
+export function Sel({ label, path, options, onPick }) {
   const { cfg, set } = useContext(Ctx)
   return (
     <label className="field wide">
@@ -33,14 +33,14 @@ function Sel({ label, path, options, onPick }) {
     </label>
   )
 }
-function Seg({ value, options, onChange }) {
+export function Seg({ value, options, onChange }) {
   return (
     <div className="seg full">
       {options.map(([k, n]) => <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{n}</button>)}
     </div>
   )
 }
-function Chk({ label, checked, onChange, disabled }) {
+export function Chk({ label, checked, onChange, disabled }) {
   return <label className="chk"><input type="checkbox" disabled={disabled} checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}</label>
 }
 
@@ -352,7 +352,7 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
   /* ---------- вкладка «Смета» ---------- */
   const [open, setOpen] = useState(null)
   const est = model.estimate
-  const groups = ['frame', 'wool', 'gkl', 'battens', 'boards', 'paint', 'extra']
+  const groups = ['frame', 'wool', 'gkl', 'battens', 'boards', 'paint', 'vent', 'extra']
   const setPrice = (id, k, v) => setRen((r) => ({ ...r, cfg: { ...r.cfg, prices: { ...r.cfg.prices, [id]: { ...(r.cfg.prices[id] || {}), [k]: v } } } }))
   const TabEst = () => (
     <>

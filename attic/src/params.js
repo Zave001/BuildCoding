@@ -183,3 +183,35 @@ export function derive(raw) {
     zG, zEnd, zCabB, hz0, hz1, xC, zC, xS, zS, cabDoor, xE, yR, utilDepth, roofLen, ext, total,
   }
 }
+
+/* ---------- зоны: кабинет / зал (спальня) / кухня ---------- */
+export const ZONE_NAMES = { cab: 'Кабинет', hall: 'Зал (спальня)', kitchen: 'Кухня', all: 'Кабинет и зал' }
+
+/**
+ * Зоны помещений. Пока между кабинетом и залом есть стена, они разделены; без стены кабинет и зал сливаются в одну зону.
+ * Для каждой зоны — диапазон по z и площади боковых и косых перекрытий, потолка и пола.
+ */
+export function roomZones(d, withWall) {
+  const T = K.doorWallT
+  const mk = (key, z0, z1, len, floor, ends = {}) => ({
+    key, name: ZONE_NAMES[key], z0, z1, len,
+    areas: { knee: 2 * d.kH * len, slope: 2 * d.slant * len, ceiling: d.cW * len, floor, ...ends },
+    sizes: { knee: `2 × ${fmt(len)} × ${fmt(d.kH)}`, slope: `2 × ${fmt(len)} × ${fmt(d.slant)}`, ceiling: `${fmt(len)} × ${fmt(d.cW)}`, floor: floor === d.W * len ? `${fmt(len)} × ${fmt(d.W)}` : `${fmt(len)} × ${fmt(d.W)} − вырезы` },
+  })
+  const kitchen = mk('kitchen', d.zG, d.zEnd, d.L3, d.ext.back)
+  if (withWall) {
+    return [
+      mk('cab', 0, d.L, d.L, d.W * d.L, { windowWall: d.areas.windowWall, doorWall: d.areas.doorWall }),
+      mk('hall', d.L + T, d.zG, d.L2, d.ext.floor),
+      kitchen,
+    ]
+  }
+  return [mk('all', 0, d.zG, d.L + d.L2, d.W * d.L + d.ext.floor, { windowWall: d.areas.windowWall }), kitchen]
+}
+
+/** Зона по координате z (для подсветки при наведении). */
+export function zoneAt(d, withWall, z) {
+  if (z >= d.zG) return 'kitchen'
+  if (!withWall) return 'all'
+  return z <= d.L + K.doorWallT / 2 ? 'cab' : 'hall'
+}

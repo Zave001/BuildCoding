@@ -58,6 +58,11 @@ export function walkSegments(d, { doorWall, doorOpen, slideOpen, cabOpen = true,
       if (zHi < L - 1e-4) s.push([dl, zHi, dl, L], [dr, zHi, dr, L])
     } else s.push([xl, zHi, xr, zHi])
   }
+  // блок вентиляции в левой подсобке — препятствие при ползании
+  if (d.ventUnit) {
+    const u = d.ventUnit
+    s.push([u.x0, u.z0, u.x1, u.z0], [u.x1, u.z0, u.x1, u.z1], [u.x1, u.z1, u.x0, u.z1], [u.x0, u.z1, u.x0, u.z0])
+  }
   // створка санузла (петли со стороны прохода): открытая торчит в комнату, закрытая перекрывает арку
   const hx = cd.x0 + cd.w
   if (cabOpen) s.push([hx, zC - 0.04, hx - cd.w * Math.cos(1.35), zC - 0.04 - cd.w * Math.sin(1.35)])

@@ -2,6 +2,7 @@
 // Чистая логика без three.js-рендера: изменение любого параметра перестраивает и 3D, и смету из одних и тех же данных.
 import { SURF, SURF_BY_ID, MATERIALS, LABOR, EXTRA_IDS } from './data'
 export { stackOf } from './stack'
+import { computeVent, SYSTEMS } from '../vent/vent'
 import { stackOf, innerSection, thicknessFinal, enabledOf, studyGeometry } from './stack'
 import { makeSurfaces, bandQuads, quadPoly, quadLen, quadSlanted, lineSegs, positions, area, perimeter, clipConvex, subRect, rectPoly, insidePoly, packLengths } from './geom'
 
@@ -516,6 +517,29 @@ export function computeRenovation(dIn, cfg) {
   addRow('corner', cornersLen, 'углы, примыкания, декоративные планки')
   addRow('trim', trimLen, 'окно (3 стороны) и дверь')
   addRow('plinth', plinthLen, 'по периметру пола без проёма двери')
+  // вентиляция: количества из раскладки каналов (выбранная система) и сравнение всех систем
+  const vent = computeVent(d, cfg, gen, stacks, thick)
+  const ventNotes = {
+    erv: 'в левой подсобке, на виброопорах', ervWall: 'за стеной кабинета', breather: 'в левой подсобке', valve: 'в стене кабинета',
+    silencer: 'по трассам', flexduct: `по подсобке, Ø${cfg.vent.duct} мм`, sleeve: 'через слои ремонта, между профилями',
+    hood: 'на левом скате', louver: 'в торце', grille: 'в кабинете', vclamp: 'через 0,8 м', ventinsul: 'тёплые участки', ventseal: 'проходы и стыки',
+  }
+  const ventQtyRows = (qv) => [
+    ['erv', qv.erv], ['ervWall', qv.ervWall], ['breather', qv.breather], ['valve', qv.valve], ['silencer', qv.silencer], ['flexduct', qv.flex],
+    ['sleeve', qv.sleeve], ['hood', qv.hood], ['louver', qv.louver], ['grille', qv.grille], ['vclamp', qv.clamp], ['ventinsul', qv.insul], ['ventseal', qv.erv + qv.ervWall + qv.breather + qv.valve > 0 ? 1 : 0],
+  ].filter(([, n]) => n > 0)
+  const ventCost = (qv) => ventQtyRows(qv).reduce((sum, [id, n]) => {
+    const m = MATERIALS[id]
+    const o = cfg.prices[id] || {}
+    const waste = o.waste ?? m.waste
+    const packSize = o.packSize ?? m.pack
+    return sum + Math.ceil((n * (1 + waste / 100)) / packSize - 1e-9) * (o.price ?? m.price)
+  }, 0)
+  if (vent) for (const [id, n] of ventQtyRows(vent.qty)) addRow(id, n, ventNotes[id] || '')
+  const ventCompare = Object.keys(SYSTEMS).map((key) => {
+    const vv = computeVent(d, cfg, gen, stacks, thick, { ...cfg.vent, enabled: true, system: key })
+    return { key, sys: SYSTEMS[key], noise: vv.total, cost: ventCost(vv.qty), warnings: vv.warnings.filter((w) => !w.includes('акустическая цепочка')).length, penetrations: (vv.qty.sleeve || 0) + (vv.qty.hood || 0) + (vv.qty.louver || 0), flex: vv.qty.flex || 0 }
+  })
 
   const labor = []
   const lrate = (id) => cfg.labor.rates[id] ?? LABOR[id].rate
@@ -576,6 +600,11 @@ export function computeRenovation(dIn, cfg) {
   warnings.push('Электрика: требования к трассам, защите и доступности соединений проверяются отдельно.')
   const elec = electricMock(d, surfaces, gen, stacks, cfg)
   warnings.push(...elec.conflicts)
+  if (vent) {
+    warnings.push(...vent.warnings)
+    info.push(...vent.info)
+    warnings.push('Вентиляция: акустическая цепочка ориентировочная, это не акустический расчёт; для итоговых цифр нужны замеры шума у фасада и паспорт блока и глушителей.')
+  }
 
   const surfaceStats = SURF.map((s) => {
     const g = gen[s.id]
@@ -587,7 +616,7 @@ export function computeRenovation(dIn, cfg) {
   })
 
   return {
-    st, stacks, thick, enabled, d, d0, raised: d !== d0, surfaces, gen, dims, estimate, warnings, info, elec, surfaceStats,
+    st, stacks, thick, enabled, d, d0, raised: d !== d0, surfaces, gen, vent, ventCompare, dims, estimate, warnings, info, elec, surfaceStats,
     board: { pieces: allPieces, purchase: boardPurchase, bins: boardBins, area: boardsArea, purchaseLen: boardsPurchaseLen, klyamers },
     totals: { hangers, profLen, profPieces: profPack.count, joints, crabs, woolVol, woolArea, sheetsTotal, sheetsL, screws, tapeLen, batLen, netTotal },
   }

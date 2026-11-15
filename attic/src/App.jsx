@@ -14,8 +14,10 @@ import { stagesFor } from './renovation/data'
 import Renovation3D from './renovation/Renovation3D'
 import Section3D, { SECTION_ORIGIN } from './renovation/Section3D'
 import RenovationUI from './renovation/RenovationUI'
+import Vent3D from './vent/Vent3D'
+import VentUI from './vent/VentUI'
 import { resolve, furnSegments, screenList } from './furn'
-import { DEFAULTS, DEFAULT_COLORS, SURFACES, derive, fmt, K } from './params'
+import { DEFAULTS, DEFAULT_COLORS, SURFACES, derive, fmt, K, roomZones } from './params'
 import { FLOORS } from './textures'
 
 const VIEWS = {
@@ -26,6 +28,7 @@ const VIEWS = {
   back: { label: 'Кухня', pos: (d) => [-0.6, 1.5, d.zG + 0.35], tgt: (d) => [0.1, 1.05, d.zEnd] },
   back2: { label: 'К купе', pos: (d) => [0.6, 1.5, d.zEnd - 0.35], tgt: (d) => [-0.3, 1.0, d.zG] },
   hatch: { label: 'Подсобка', pos: (d) => [-0.2, 0.95, (d.hz0 + d.hz1) / 2 + 0.2], tgt: (d) => [-d.W / 2, 0.62, (d.hz0 + d.hz1) / 2] },
+  vent: { label: 'Вентиляция', pos: () => [-5.6, 3.4, 9.6], tgt: () => [-2.9, 0.5, 5.2] },
   window: { label: 'От окна', pos: (d) => [0, 1.5, 0.4], tgt: (d) => [0, 1.0, d.zG] },
   facade2: { label: 'Торец', pos: (d) => [-d.xE * 0.75, 2.3, d.zEnd + 7.2], tgt: (d) => [0, 0.9, d.zEnd] },
   facade: { label: 'Фасад', pos: (d) => [d.xE * 0.75, 2.3, -7.2], tgt: (d) => [0, 0.9, 0] },
@@ -126,7 +129,7 @@ export default function App() {
   const [floorKey, setFloorKey] = useState(FLOORS[SAVED.floorKey] ? SAVED.floorKey : 'grey')
   const [hl, setHl] = useState(null)
   const [open, setOpen] = useState(SAVED.open ?? true)
-  const [nav, setNav] = useState(['walk', 'build', 'renovation'].includes(HASH.get('nav')) ? HASH.get('nav') : 'edit') // edit | build | walk | renovation
+  const [nav, setNav] = useState(['walk', 'build', 'renovation', 'vent'].includes(HASH.get('nav')) ? HASH.get('nav') : 'edit') // edit | build | walk | renovation
   const [near, setNear] = useState(null)
   const [items, setItems] = useState(() => {
     try {
@@ -146,10 +149,11 @@ export default function App() {
     } catch { /* без хранилища тоже работает */ }
   }, [ren])
   // ремонт виден во всех режимах (если не выключено), а коллизии берут толщины слоёв текущего этапа
-  const showRen = nav === 'renovation' || ren.ui.apply !== false
+  const showRen = nav === 'renovation' || nav === 'vent' || ren.ui.apply !== false
   const rmodel = useMemo(() => (showRen ? computeRenovation(d, ren.cfg) : null), [d, ren.cfg, showRen])
   const rinfo = useMemo(() => (showRen ? renState(d, ren.cfg, ren.stage, ren.ui.frameOnly) : null), [d, ren.cfg, ren.stage, ren.ui.frameOnly, showRen])
-  const dr = useMemo(() => (rinfo ? { ...d, ren: rinfo } : d), [d, rinfo])
+  const ventUnit = rmodel?.vent && ren.cfg.vent.enabled ? rmodel.vent.unitRect : null
+  const dr = useMemo(() => (rinfo || ventUnit ? { ...d, ...(rinfo ? { ren: rinfo } : {}), ...(ventUnit ? { ventUnit } : {}) } : d), [d, rinfo, ventUnit])
   const [tool, setTool] = useState(null)
   const [selected, setSelected] = useState(null)
   const [status, setStatus] = useState('')
@@ -176,6 +180,7 @@ export default function App() {
   const three = useRef(null)
   const fromPose = useRef(null)
   const segs = useMemo(() => walkSegments(dr, scene), [dr, scene])
+  const zones = useMemo(() => roomZones(d, scene.doorWall), [d, scene.doorWall])
   const placed = useMemo(() => resolve(items), [items])
   const furnSegs = useMemo(() => furnSegments(placed), [placed])
   const doors = useMemo(() => [...doorList(d, scene), ...screenList(placed)], [d, scene, placed])
@@ -289,7 +294,7 @@ export default function App() {
           floorKey={floorKey}
           mode={mode}
           gloss={gloss}
-          showDims={showDims && nav !== 'walk' && nav !== 'renovation'}
+          showDims={showDims && nav !== 'walk' && nav !== 'renovation' && nav !== 'vent'}
           hl={hl}
           setHl={setHl}
           view={{ ...scene, interactive: nav === 'edit', ceilCut: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.ceiling.removeStretch && ren.cfg.ceiling.gap > 0, radHide: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.radiatorOut }}
@@ -308,6 +313,7 @@ export default function App() {
             onHanger={(surf, line) => setRsel((x) => ({ ...x, hanger: { surf, line } }))}
           />
         )}
+        {rmodel?.vent && ren.cfg.vent.show && <Vent3D vent={rmodel.vent} cfg={ren.cfg} labels={nav === 'renovation' || nav === 'vent'} />}
         {nav === 'renovation' && rmodel && ren.ui.section && <Section3D model={rmodel} cfg={ren.cfg} ui={ren.ui} surfId={ren.ui.surface} />}
         <FurnitureLayer
           d={dr}
@@ -335,12 +341,14 @@ export default function App() {
       </Canvas>
 
       <div className="modes">
-        <button className={nav === 'edit' ? 'on' : ''} onClick={() => { if (nav === 'walk') toggleNav(); else if (nav === 'build') goBuild(); else if (nav === 'renovation') setNav('edit') }}>Редактор</button>
+        <button className={nav === 'edit' ? 'on' : ''} onClick={() => { if (nav === 'walk') toggleNav(); else if (nav === 'build') goBuild(); else if (nav === 'renovation' || nav === 'vent') setNav('edit') }}>Редактор</button>
         <button className={nav === 'build' ? 'on' : ''} onClick={() => { if (nav === 'edit') goBuild(); else if (nav === 'walk') { toggleNav(); setTimeout(goBuild, 0) } }}>Мебель</button>
         <button className={nav === 'renovation' ? 'on' : ''} onClick={() => { if (nav === 'walk') { toggleNav(); setTimeout(() => setNav('renovation'), 0) } else setNav(nav === 'renovation' ? 'edit' : 'renovation'); setTool(null); setSelected(null) }}>Ремонт</button>
+        <button className={nav === 'vent' ? 'on' : ''} onClick={() => { if (nav === 'walk') { toggleNav(); setTimeout(() => setNav('vent'), 0) } else setNav(nav === 'vent' ? 'edit' : 'vent'); setTool(null); setSelected(null); if (nav !== 'vent') setViewReq((r) => ({ k: 'vent', n: r.n + 1 })) }}>Вентиляция</button>
         <button className={nav === 'walk' ? 'on' : ''} onClick={() => nav !== 'walk' && toggleNav()}>Прогулка</button>
       </div>
 
+      {nav === 'vent' && rmodel && <VentUI ren={ren} setRen={setRen} model={rmodel} />}
       {nav === 'renovation' && rmodel && (
         <RenovationUI
           ren={ren}
@@ -352,7 +360,7 @@ export default function App() {
           onReset={() => { setRen({ cfg: mergeCfg(), stage: 99, ui: { ...REN_UI } }); setRsel({ surface: null, board: null }) }}
         />
       )}
-      <aside className={'panel' + (open ? '' : ' closed') + (nav === 'walk' && locked ? ' hidden' : '') + (nav === 'renovation' ? ' hidden' : '')}>
+      <aside className={'panel' + (open ? '' : ' closed') + (nav === 'walk' && locked ? ' hidden' : '') + ((nav === 'renovation' || nav === 'vent') ? ' hidden' : '')}>
         <header>
           <div>
             <h1>Мансарда · {fmt(d.total.area)} м²</h1>
@@ -459,25 +467,37 @@ export default function App() {
             </section>
 
             <section>
-              <h2>Плоскости и площади (кабинет)</h2>
+              <h2>Плоскости и площади по зонам</h2>
               <table>
                 <tbody>
-                  {Object.keys(SURFACES).map((k) => (
-                    <tr key={k} className={hl === k ? 'hl' : ''} onMouseEnter={() => setHl(k)} onMouseLeave={() => setHl(null)}>
-                      <td className="sw">
-                        {k === 'floor' ? (
-                          <span className="floor-dot" />
-                        ) : (
-                          <input type="color" value={colors[k]} onChange={(e) => setColors({ ...colors, [k]: e.target.value })} title="Цвет" />
-                        )}
-                      </td>
-                      <td>
-                        <div className="nm">{SURFACES[k]}</div>
-                        <div className="sz">{d.sizes[k]}</div>
-                      </td>
-                      <td className="ar">{fmt(d.areas[k])} м²</td>
-                    </tr>
-                  ))}
+                  {zones.flatMap((zn) => {
+                    const types = ['knee', 'slope', 'ceiling', 'floor', ...(zn.areas.windowWall ? ['windowWall'] : []), ...(zn.areas.doorWall ? ['doorWall'] : [])]
+                    return [
+                      <tr key={'h' + zn.key} className="zone-h">
+                        <td colSpan="3">{zn.name} <small>z {fmt(zn.z0)}–{fmt(zn.z1)} м</small></td>
+                      </tr>,
+                      ...types.map((k) => {
+                        const key = ['windowWall', 'doorWall'].includes(k) ? k : `${k}:${zn.key}`
+                        const colorKey = zn.key === 'kitchen' && (k === 'knee' || k === 'slope') ? 'backRoom' : k
+                        return (
+                          <tr key={zn.key + k} className={hl === key ? 'hl' : ''} onMouseEnter={() => setHl(key)} onMouseLeave={() => setHl(null)}>
+                            <td className="sw">
+                              {k === 'floor' ? (
+                                <span className="floor-dot" />
+                              ) : (
+                                <input type="color" value={colors[colorKey]} onChange={(e) => setColors({ ...colors, [colorKey]: e.target.value })} title="Цвет" />
+                              )}
+                            </td>
+                            <td>
+                              <div className="nm">{SURFACES[k]}</div>
+                              <div className="sz">{zn.sizes[k] || d.sizes[k]}</div>
+                            </td>
+                            <td className="ar">{fmt(zn.areas[k])} м²</td>
+                          </tr>
+                        )
+                      }),
+                    ]
+                  })}
                 </tbody>
               </table>
               <label className="field wide">
@@ -537,7 +557,15 @@ export default function App() {
 
       {hl && nav === 'edit' && (
         <div className="tip">
-          {SURFACES[hl]} · <b>{fmt(d.areas[hl])} м²</b>
+          {(() => {
+            const [t, zk] = hl.includes(':') ? hl.split(':') : [hl, null]
+            const zn = zk ? zones.find((q) => q.key === zk) : null
+            return (
+              <>
+                {SURFACES[t]}{zn ? ` · ${zn.name}` : ''} · <b>{fmt(zn ? zn.areas[t] : d.areas[t])} м²</b>
+              </>
+            )
+          })()}
         </div>
       )}
 

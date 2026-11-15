@@ -1,3 +1,4 @@
+import { DEFAULT_VENT } from '../vent/vent'
 // Блок «Ремонт»: каталог, настройки по умолчанию, этапы. Единицы: толщины — мм, шаги — см, геометрия — м.
 
 export const SURF = [
@@ -42,6 +43,7 @@ export const DEFAULT_CFG = {
   mount: 'battens', // крепление вагонки на стенах и скатах: 'battens' — на обрешётку, 'direct' — прямо на ГКЛ по профилям
   // потолок: под натяжным потолком 5 см пространства, выше — фанера. После демонтажа основание потолка — фанера.
   ceiling: { mode: 'frame', removeStretch: true, gap: 50 }, // mode: 'frame' — профиль + ГКЛ, 'plywood' — обрешётка и вагонка на фанеру
+  vent: DEFAULT_VENT,
   radiatorOut: true, // батарею выносим наружу после ремонта: ниши в отделке нет
   boardDir: 'horizontal', // 'horizontal' | 'vertical'
   surfaces: Object.fromEntries(SURF.map((s) => [s.id, { wool: true, woolT: 100 }])),
@@ -94,6 +96,19 @@ export const MATERIALS = {
   seal: { name: 'Уплотнительная лента', unit: 'м', pack: 30, price: 240, waste: 10, group: 'extra' },
   corner: { name: 'Уголки / декоративные планки', unit: 'м', pack: 2.5, price: 95, waste: 10, group: 'extra' },
   trim: { name: 'Наличники окна и двери', unit: 'м', pack: 2.2, price: 130, waste: 10, group: 'extra' },
+  ervWall: { name: 'Рекуператор настенный компактный', unit: 'шт', pack: 1, price: 54000, waste: 0, group: 'vent' },
+  breather: { name: 'Бризер с нагревом и фильтром', unit: 'шт', pack: 1, price: 26000, waste: 0, group: 'vent' },
+  valve: { name: 'Акустический приточный клапан', unit: 'шт', pack: 1, price: 4800, waste: 0, group: 'vent' },
+  louver: { name: 'Решётка-жалюзи в торце с защитой от снега', unit: 'шт', pack: 1, price: 2400, waste: 0, group: 'vent' },
+  erv: { name: 'Рекуператор канальный (150–250 м³/ч)', unit: 'шт', pack: 1, price: 78000, waste: 0, group: 'vent' },
+  silencer: { name: 'Шумоглушитель Ø125, 900 мм', unit: 'шт', pack: 1, price: 4200, waste: 0, group: 'vent' },
+  flexduct: { name: 'Воздуховод гибкий акустический Ø125', unit: 'м', pack: 1, price: 480, waste: 8, group: 'vent' },
+  sleeve: { name: 'Гильза-проход через слои Ø165 (с уплотнением)', unit: 'шт', pack: 1, price: 750, waste: 0, group: 'vent' },
+  hood: { name: 'Колпак кровельный (проход через кровлю)', unit: 'шт', pack: 1, price: 3600, waste: 0, group: 'vent' },
+  grille: { name: 'Решётка / диффузор', unit: 'шт', pack: 1, price: 1900, waste: 0, group: 'vent' },
+  vclamp: { name: 'Виброподвес канала', unit: 'шт', pack: 1, price: 240, waste: 5, group: 'vent' },
+  ventinsul: { name: 'Теплоизоляция тёплых каналов', unit: 'м', pack: 1, price: 190, waste: 10, group: 'vent' },
+  ventseal: { name: 'Виброгерметик и лента для проходов', unit: 'компл', pack: 1, price: 1100, waste: 0, group: 'vent' },
   plinth: { name: 'Плинтус', unit: 'м', pack: 2.5, price: 110, waste: 10, group: 'extra' },
 }
 export const GROUP_LABEL = {
@@ -103,6 +118,7 @@ export const GROUP_LABEL = {
   battens: 'Деревянная обрешётка',
   boards: 'Вагонка-штиль',
   paint: 'Окраска',
+  vent: 'Вентиляция (рекуператор)',
   extra: 'Дополнительные материалы',
   labor: 'Работы мастеров',
 }

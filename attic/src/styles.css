@@ -297,3 +297,22 @@ td.ar { text-align: right; }
 
 .ren-chip { position: absolute; top: 62px; left: 50%; transform: translateX(-50%); z-index: 9; background: rgba(20, 23, 28, 0.88); border: 1px solid rgba(255, 181, 71, 0.45); color: #f1d9ab; padding: 5px 12px; border-radius: 999px; font-size: 12px; pointer-events: none; white-space: nowrap; }
 .pos { color: #7fe3b9; }
+
+/* ---------- вкладка «Вентиляция» ---------- */
+.vpanel { width: 420px; }
+.faq .wb { width: 100%; text-align: left; border: none; padding: 5px 0; color: #e7ebef; }
+.syscards { display: flex; flex-direction: column; gap: 7px; }
+.syscard { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 8px 10px; border-radius: 10px; }
+.syscard.on { background: rgba(255, 181, 71, 0.14); border-color: #ffb547; color: #f7e7c6; }
+.syscard b { font-weight: 650; }
+.syscard .desc { color: #aab4be; font-size: 11.5px; }
+.syscard .meta { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 11.5px; }
+.syscard .meta i { font-style: normal; background: rgba(255, 255, 255, 0.07); padding: 1px 7px; border-radius: 999px; }
+.syscard .pc { display: flex; flex-direction: column; font-size: 11px; }
+.syscard .pc em { font-style: normal; color: #7fe3b9; }
+.syscard .pc em.neg { color: #ff9b8a; }
+table.cmp tbody tr { cursor: pointer; }
+@media (max-width: 900px) { .vpanel { width: auto; } }
+
+tr.zone-h td { padding-top: 10px; font-weight: 650; color: #ffb547; }
+tr.zone-h small { color: #8b96a1; font-weight: 400; margin-left: 6px; }

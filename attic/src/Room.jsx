@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { MeshReflectorMaterial, Mask, useMask, Line, Html } from '@react-three/drei'
 import { makeLaminate, makePaint, makeForest } from './textures'
-import { fmt, K } from './params'
+import { fmt, K, roomZones, zoneAt } from './params'
 import { quad, wallX } from './geom'
 import Hatch from './Hatch'
 import Radiator from './Radiator'
@@ -293,6 +293,46 @@ function Dimensions({ d, doorWall, utility }) {
   )
 }
 
+/* ---------- подсветка зоны при наведении ---------- */
+
+function ZoneOverlay({ d, hl, withWall }) {
+  const [type, zoneKey] = hl && hl.includes(':') ? hl.split(':') : [null, null]
+  const parts = useMemo(() => {
+    if (!type) return null
+    const z = roomZones(d, withWall).find((q) => q.key === zoneKey)
+    if (!z) return null
+    const { W, kH, cH, cW, xS, zS, zG } = d
+    const zc = (z.z0 + z.z1) / 2
+    const c = new THREE.Vector3(0, cH / 2, zc)
+    const out = []
+    if (type === 'floor') {
+      // пол зоны; в зале и в объединённой зоне вырезан проём лестницы
+      const notch = z.z1 > zS && z.z0 < zG
+      const pts = notch
+        ? [[-W / 2, -z.z0], [W / 2, -z.z0], [W / 2, -zS], [xS, -zS], [xS, -Math.min(z.z1, zG)], [-W / 2, -Math.min(z.z1, zG)]]
+        : [[-W / 2, -z.z0], [W / 2, -z.z0], [W / 2, -z.z1], [-W / 2, -z.z1]]
+      out.push({ g: new THREE.ShapeGeometry(new THREE.Shape(pts.map((p) => new THREE.Vector2(p[0], p[1])))), floor: true })
+    } else if (type === 'knee') {
+      for (const s of [-1, 1]) out.push({ g: quad([[s * W / 2, 0, z.z0], [s * W / 2, 0, z.z1], [s * W / 2, kH, z.z1], [s * W / 2, kH, z.z0]], c) })
+    } else if (type === 'slope') {
+      for (const s of [-1, 1]) out.push({ g: quad([[s * W / 2, kH, z.z0], [s * W / 2, kH, z.z1], [s * cW / 2, cH, z.z1], [s * cW / 2, cH, z.z0]], c) })
+    } else if (type === 'ceiling') {
+      out.push({ g: quad([[-cW / 2, cH - 0.004, z.z0], [cW / 2, cH - 0.004, z.z0], [cW / 2, cH - 0.004, z.z1], [-cW / 2, cH - 0.004, z.z1]], c) })
+    }
+    return out
+  }, [d, hl, withWall])
+  if (!parts) return null
+  return (
+    <group renderOrder={8}>
+      {parts.map((p, i) => (
+        <mesh key={i} geometry={p.g} rotation={p.floor ? [-Math.PI / 2, 0, 0] : [0, 0, 0]} position={p.floor ? [0, 0.006, 0] : [0, 0, 0]}>
+          <meshBasicMaterial color={HL} transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-3} polygonOffsetUnits={-3} toneMapped={false} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 /* ---------- комната ---------- */
 
 export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, setHl, view }) {
@@ -344,33 +384,43 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
     if (win2Ref.current) win2Ref.current.visible = facade || camera.position.z < zEnd + 0.05
   })
 
+  // перекрытия и пол подсвечиваются по зонам (кабинет / зал / кухня): зона берётся по точке наведения
+  const ZONED = ['knee', 'slope', 'ceiling', 'floor']
   const ev = (k) =>
     interactive
       ? {
           onPointerOver: (e) => {
             e.stopPropagation()
-            setHl(k)
+            setHl(ZONED.includes(k) ? `${k}:${zoneAt(d, !!doorWall, e.point.z)}` : k)
           },
-          onPointerOut: () => setHl((h) => (h === k ? null : h)),
+          onPointerMove: ZONED.includes(k)
+            ? (e) => {
+                e.stopPropagation()
+                const key = `${k}:${zoneAt(d, !!doorWall, e.point.z)}`
+                setHl((h) => (h === key ? h : key))
+              }
+            : undefined,
+          onPointerOut: () => setHl((h) => (h === k || (h && h.startsWith(k + ':')) ? null : h)),
         }
       : {}
 
   return (
     <group>
       <Lights d={d} mode={mode} cut={ceilCut} />
+      <ZoneOverlay d={d} hl={hl} withWall={!!doorWall} />
 
       <mesh geometry={geoms.floor} rotation={[-Math.PI / 2, 0, 0]} receiveShadow {...ev('floor')}>
-        <meshStandardMaterial map={floorTex} roughness={0.48} metalness={0} emissive={hl === 'floor' ? HL : '#000'} emissiveIntensity={hl === 'floor' ? 0.3 : 0} />
+        <meshStandardMaterial map={floorTex} roughness={0.48} metalness={0} emissive="#000" emissiveIntensity={0} />
       </mesh>
 
       {['kneeL', 'kneeR'].map((k) => (
         <mesh key={k} geometry={geoms[k]} castShadow receiveShadow {...ev('knee')}>
-          <Paint map={paintA} color={colors.knee} active={hl === 'knee'} />
+          <Paint map={paintA} color={colors.knee} active={false} />
         </mesh>
       ))}
       {['slopeL', 'slopeR'].map((k) => (
         <mesh key={k} geometry={geoms[k]} castShadow receiveShadow {...ev('slope')}>
-          <Paint map={paintB} color={colors.slope} active={hl === 'slope'} />
+          <Paint map={paintB} color={colors.slope} active={false} />
         </mesh>
       ))}
 
@@ -403,11 +453,11 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
             metalness={0.05}
             depthScale={0}
             color={colors.ceiling}
-            emissive={hl === 'ceiling' ? HL : '#000'}
-            emissiveIntensity={hl === 'ceiling' ? 0.35 : 0}
+            emissive="#000"
+            emissiveIntensity={0}
           />
         ) : (
-          <meshStandardMaterial color={colors.ceiling} roughness={0.75} emissive={hl === 'ceiling' ? HL : '#000'} emissiveIntensity={hl === 'ceiling' ? 0.35 : 0} />
+          <meshStandardMaterial color={colors.ceiling} roughness={0.75} />
         )}
       </mesh>
 
@@ -418,7 +468,7 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
 
       {/* кухня: боковые и косые перекрытия, торец с таким же окном */}
       {['backKneeL', 'backKneeR', 'backSlopeL', 'backSlopeR'].map((k) => (
-        <mesh key={k} geometry={geoms[k]} castShadow receiveShadow>
+        <mesh key={k} geometry={geoms[k]} castShadow receiveShadow {...ev(k.includes('Knee') ? 'knee' : 'slope')}>
           <Paint map={k.includes('Knee') ? paintA : paintB} color={colors.backRoom} />
         </mesh>
       ))}
