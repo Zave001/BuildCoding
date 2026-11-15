@@ -135,7 +135,7 @@ export function resolve(items) {
 /** Запретные зоны на плане: проёмы, перегородки, области открывания дверей. */
 export function zonesOf(d, sc) {
   const { W, L, zG, xS, xC, zS, zC, zCabB, cabDoor: cd } = d
-  const T = K.doorWallT
+  const T = d.wallT
   const z = [
     { x0: xS, x1: W / 2, z0: zS, z1: zG + 0.04, label: 'проём лестницы' },
     { x0: xC, x1: W / 2, z0: zG - 0.04, z1: zG + 0.04, label: 'стена-купе', solid: true },

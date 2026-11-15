@@ -16,9 +16,9 @@ export const utilHeight = (d, x) => {
 }
 
 /** Препятствия на плане: отрезки [x1, z1, x2, z2]. */
-export function walkSegments(d, { doorWall, doorOpen, slideOpen, cabOpen = true, utility = true }) {
+export function walkSegments(d, { doorWall, doorUnit = true, doorOpen, slideOpen, cabOpen = true, utility = true }) {
   const { W, L, zG, zEnd, zCabB, xS, zS, xC, zC, cabDoor: cd } = d
-  const T = K.doorWallT
+  const T = d.wallT
   // левая стена: с подсобкой в ней есть проём двери (с запасом по краям — чтобы пролезть боком)
   const hm = HATCH_MARGIN
   const leftWall = utility
@@ -56,7 +56,7 @@ export function walkSegments(d, { doorWall, doorOpen, slideOpen, cabOpen = true,
     if (doorWall) {
       s.push([xl, zHi, dl, zHi], [dr, zHi, xr, zHi])
       if (zHi < L - 1e-4) s.push([dl, zHi, dl, L], [dr, zHi, dr, L])
-    } else s.push([xl, zHi, xr, zHi])
+    }
   }
   // блок вентиляции в левой подсобке — препятствие при ползании
   if (d.ventUnit) {
@@ -76,7 +76,9 @@ export function walkSegments(d, { doorWall, doorOpen, slideOpen, cabOpen = true,
     const dl = d.doorX - d.doorW / 2
     const dr = d.doorX + d.doorW / 2
     s.push([-W / 2, L, dl, L], [dr, L, W / 2, L], [-W / 2, L + T, dl, L + T], [dr, L + T, W / 2, L + T], [dl, L, dl, L + T], [dr, L, dr, L + T])
-    if (doorOpen) {
+    if (!doorUnit) {
+      // проём без двери: полотна ещё нет
+    } else if (doorOpen) {
       const hx = dl + 0.0325
       const lw = d.doorW - 0.065
       s.push([hx, L + T / 2 - 0.02, hx + lw * Math.cos(1.45), L + T / 2 - 0.02 - lw * Math.sin(1.45)])
@@ -136,7 +138,7 @@ export function limitX(d, eye) {
 /** Двери, с которыми можно взаимодействовать при прогулке. */
 export function doorList(d, sc) {
   const list = []
-  if (sc.doorWall) list.push({ id: 'entry', x: d.doorX, z: d.L + K.doorWallT / 2, open: sc.doorOpen, name: 'дверь' })
+  if (sc.doorWall && sc.doorUnit !== false) list.push({ id: 'entry', x: d.doorX, z: d.L + d.wallT / 2, open: sc.doorOpen, name: 'дверь' })
   list.push({ id: 'slide', x: (d.xC + d.xS) / 2, z: d.zG, open: sc.slideOpen, name: 'дверь-купе' })
   if (sc.utility ?? true) list.push({ id: 'hatch', x: -d.W / 2, z: (d.hz0 + d.hz1) / 2, open: sc.hatchOpen, name: 'дверь в подсобку', reach: 1.7 })
   list.push({ id: 'cabin', x: d.cabDoor.x0 + d.cabDoor.w / 2, z: d.zC, open: sc.cabOpen, name: 'дверь санузла' })

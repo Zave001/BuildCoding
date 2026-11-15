@@ -3,6 +3,7 @@
 import { SURF, SURF_BY_ID, MATERIALS, LABOR, EXTRA_IDS } from './data'
 export { stackOf } from './stack'
 import { computeVent, SYSTEMS } from '../vent/vent'
+import { genWall } from './wall'
 import { stackOf, innerSection, thicknessFinal, enabledOf, studyGeometry } from './stack'
 import { makeSurfaces, bandQuads, quadPoly, quadLen, quadSlanted, lineSegs, positions, area, perimeter, clipConvex, subRect, rectPoly, insidePoly, packLengths } from './geom'
 
@@ -37,7 +38,7 @@ function emptyGen(surf) {
 
 /* ---------- раскладка по одной поверхности ---------- */
 
-function genSurface(surf, cfg, st, d) {
+function genSurface(surf, cfg, st, d, extra = {}) {
   const meta = SURF_BY_ID[surf.id]
   const f = cfg.frame
   const hg = cfg.hangers[meta.group]
@@ -49,6 +50,7 @@ function genSurface(surf, cfg, st, d) {
   const axBt = axBd === 's' ? 't' : 's'
   const hasFrame = st.frame
   const direct = st.mode === 'direct'
+  const wallDirect = st.mode === 'wallDirect' // вагонка прямо на ГКЛ новой стены — в её вертикальные стойки
   const axA = direct ? (f.scheme === 'two' ? axBd : axBt) : f.dir === 'along' ? 's' : 't'
   const axB = axA === 's' ? 't' : 's'
   const B = surf.bounds
@@ -169,9 +171,9 @@ function genSurface(surf, cfg, st, d) {
   R.batPos = []
   if (cfg.finish === 'boards') {
     // линии крепления досок: рейки обрешётки или (при монтаже на ГКЛ) линии профиля
-    const bpos = direct ? [...outerPos] : positions(B[axBd][0], B[axBd][1], bc.pitch / 100, 0.03)
+    const bpos = wallDirect ? [...(extra.studX || [])].sort((a, b) => a - b) : direct ? [...outerPos] : positions(B[axBd][0], B[axBd][1], bc.pitch / 100, 0.03)
     // дополнительные рейки по сторонам проёмов
-    for (const h of direct ? [] : surf.holes) {
+    for (const h of direct || wallDirect ? [] : surf.holes) {
       for (const p of [h[axBd][0] - 0.04, h[axBd][1] + 0.04]) {
         if (p > B[axBd][0] + 0.03 && p < B[axBd][1] - 0.03 && bpos.every((q) => Math.abs(q - p) > 0.06)) bpos.push(p)
       }
@@ -333,7 +335,10 @@ export function computeRenovation(dIn, cfg) {
   const surfaces = makeSurfaces(d, thick.windowWall, thick.doorWall, !cfg.radiatorOut)
   const enabled = Object.fromEntries(SURF.map((s) => [s.id, enabledOf(cfg, s.id)]))
   const gen = {}
-  for (const s of SURF) gen[s.id] = enabled[s.id] ? genSurface(surfaces[s.id], cfg, stacks[s.id], d) : emptyGen(surfaces[s.id])
+  // новая стена с дверью: каркас, вата, ГКЛ — своя конструкция; на её поверхности в кабинете остаётся только чистовая отделка
+  const wall = genWall(d, cfg)
+  const studX = wall ? wall.studs.map((s) => s.x) : []
+  for (const s of SURF) gen[s.id] = enabled[s.id] ? genSurface(surfaces[s.id], cfg, stacks[s.id], d, { studX }) : emptyGen(surfaces[s.id])
 
   const warnings = []
   const info = []
@@ -376,6 +381,11 @@ export function computeRenovation(dIn, cfg) {
     }
   }
 
+  if (wall) {
+    woolVol += wall.qty.woolVol
+    woolArea += wall.qty.woolArea
+  }
+
   /* --- ГКЛ --- */
   const dwc = cfg.drywall
   const sheetArea = dwc.sheetL * dwc.sheetW
@@ -397,6 +407,18 @@ export function computeRenovation(dIn, cfg) {
       for (const p of l.parts) partials.push(p.area)
     })
   }
+  if (wall) {
+    // листы стены: с каждой стороны столько же слоёв, сколько у остальных поверхностей
+    for (const side of [wall.sheets.cab, wall.sheets.hall]) {
+      for (const layer of side) {
+        for (const p of layer) {
+          if (p.full) fullTotal += 1
+          else partials.push(p.area)
+        }
+        dwArea += layer.reduce((q, x) => q + x.area, 0)
+      }
+    }
+  }
   // обрезки используются повторно: упаковка по площади
   const bins = []
   for (const a of [...partials].sort((x, y) => y - x)) {
@@ -408,8 +430,9 @@ export function computeRenovation(dIn, cfg) {
   const sheetsTotal = fullTotal + bins.length
   const sheetsL = [0, 1].map((k) => (k < dwc.layers ? sum(dwBy.map((x) => x.lay[k].full + x.lay[k].part)) : 0))
   const screws = sum(SURF.flatMap((s) => gen[s.id].screws.slice(0, dwc.layers).map((a) => a.length)))
+  const wallScrews = wall ? Math.round(wall.qty.sheetArea * 25) + wall.qty.studCount * 4 : 0
   const lastLayer = dwc.layers - 1
-  const tapeLen = sum(SURF.flatMap((s) => gen[s.id].sheets[lastLayer].map((x) => perimeter(x.poly) / 2)))
+  const tapeLen = sum(SURF.flatMap((s) => gen[s.id].sheets[lastLayer].map((x) => perimeter(x.poly) / 2))) + (wall ? sum([wall.sheets.cab, wall.sheets.hall].flatMap((side) => side[side.length - 1].map((x) => perimeter(x.poly) / 2))) : 0)
   const netTotal = sum(SURF.map((s) => gen[s.id].netArea))
 
   /* --- обрешётка --- */
@@ -494,7 +517,7 @@ export function computeRenovation(dIn, cfg) {
     rows[rows.length - 1].net = woolVol / cfg.wool.packVol
   }
   addRow('gkl', sheetsTotal, `полных ${fullTotal}, обрезков ${partials.length} (повторное использование ${bins.length})`, { name: `ГКЛ ${dwc.thickness} мм (${dwc.sheetW}×${dwc.sheetL} м)`, waste: dwc.waste })
-  addRow('scMetal', screws, `${dwc.layers} сл.`)
+  addRow('scMetal', screws + wallScrews, `${dwc.layers} сл., включая стену с дверью`)
   addRow('tape', tapeLen, 'швы последнего слоя')
   const puttyKg = cfg.finish === 'paint' ? netTotal * 1.5 : tapeLen * 0.35
   addRow('putty', puttyKg, cfg.finish === 'paint' ? '1,5 кг/м² (стыки и сплошная шпаклёвка)' : 'только стыки, 0,35 кг/м')
@@ -512,6 +535,13 @@ export function computeRenovation(dIn, cfg) {
     if (coatUse.boards > 0) addRow('coating', coatUse.boards, 'в 2 слоя')
   } else {
     addRow('paint', coatUse.paint, '2 слоя, 0,18 л/м²')
+  }
+  if (wall) {
+    addRow('wallCW', wall.qty.studs, `${wall.qty.studCount} стоек CW${cfg.wall.frame}, ${fmtN(wall.qty.studLen, 1)} м пог., хлыст 3 м`)
+    addRow('wallUD', wall.qty.tracks, `направляющие UD${cfg.wall.frame}, ${fmtN(wall.qty.trackLen, 1)} м пог.`)
+    if (wall.qty.tape > 0) addRow('dampTape', wall.qty.tape, 'под всеми направляющими по периметру стены')
+    addRow('acSeal', wall.qty.sealant, 'зазор 5–10 мм между ГКЛ и прилегающими поверхностями')
+    if (wall.qty.pads > 0) addRow('wallPad', wall.qty.pads, 'по периметру, шаг 0,6 м')
   }
   addRow('seal', sealLen, 'по периметру поверхностей')
   addRow('corner', cornersLen, 'углы, примыкания, декоративные планки')
@@ -542,12 +572,15 @@ export function computeRenovation(dIn, cfg) {
   })
 
   const labor = []
+  const wallArea = wall ? area(wall.gable) - d.doorW * d.doorH : 0
   const lrate = (id) => cfg.labor.rates[id] ?? LABOR[id].rate
   const lab = (id, qty) => labor.push({ id, name: LABOR[id].name, unit: LABOR[id].unit, qty, rate: lrate(id), cost: qty * lrate(id) })
   if (cfg.ceiling.removeStretch && cfg.ceiling.gap > 0) lab('demo', d0.cW * d0.L)
-  lab('frame', netTotal)
+  const netOld = netTotal - gen.doorWall.netArea // у стены с дверью каркас и ГКЛ — в отдельной строке
+  lab('frame', netOld)
   if (woolArea > 0) lab('wool', woolArea)
-  lab('gkl', netTotal * dwc.layers)
+  lab('gkl', netOld * dwc.layers)
+  if (wall) lab('wall', wallArea)
   if (cfg.finish === 'boards') {
     lab('battens', netTotal)
     lab('boards', netTotal)
@@ -600,6 +633,10 @@ export function computeRenovation(dIn, cfg) {
   warnings.push('Электрика: требования к трассам, защите и доступности соединений проверяются отдельно.')
   const elec = electricMock(d, surfaces, gen, stacks, cfg)
   warnings.push(...elec.conflicts)
+  if (wall) {
+    warnings.push(...wall.warnings)
+    info.push(...wall.info)
+  }
   if (vent) {
     warnings.push(...vent.warnings)
     info.push(...vent.info)
@@ -616,7 +653,7 @@ export function computeRenovation(dIn, cfg) {
   })
 
   return {
-    st, stacks, thick, enabled, d, d0, raised: d !== d0, surfaces, gen, vent, ventCompare, dims, estimate, warnings, info, elec, surfaceStats,
+    st, stacks, thick, enabled, d, d0, raised: d !== d0, surfaces, gen, vent, ventCompare, wall, dims, estimate, warnings, info, elec, surfaceStats,
     board: { pieces: allPieces, purchase: boardPurchase, bins: boardBins, area: boardsArea, purchaseLen: boardsPurchaseLen, klyamers },
     totals: { hangers, profLen, profPieces: profPack.count, joints, crabs, woolVol, woolArea, sheetsTotal, sheetsL, screws, tapeLen, batLen, netTotal },
   }

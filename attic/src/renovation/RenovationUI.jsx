@@ -152,6 +152,23 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
         <Seg value={cfg.frame.dir} options={[['along', 'Основной профиль вдоль'], ['across', 'Основной профиль поперёк']]} onChange={(v) => set('frame.dir', v)} />
         <small className="note">Полость каркаса: {fmtN(model.stacks.kneeL.frameDepth * 1000, 0)} мм. {cfg.frame.scheme === 'one' ? 'В одноуровневой схеме ряды подвесов совпадают с профилем.' : ''}</small>
       </section>
+      <section>
+        <h2>Новая стена с дверью (кабинет | зал)</h2>
+        <Chk label="Возводить стену (на этапе «Металлический профиль» — каркас)" checked={cfg.wall.enabled !== false} onChange={(v) => set('wall.enabled', v)} />
+        {cfg.wall.enabled !== false && (
+          <>
+            <small className="note">Каркас UD + CW, вата, ГКЛ с двух сторон. Подвесов нет — перегородка стоит сама. Отделка вагонкой поверх ГКЛ со стороны кабинета — по общим настройкам (с обрешёткой или без).</small>
+            <div className="grid">
+              <Sel label="Профиль стоек" path="wall.frame" options={[[50, 'CW 50'], [75, 'CW 75'], [100, 'CW 100']]} onPick={(k) => set('wall.frame', Number(k))} />
+              <Num label="Шаг стоек" path="wall.studPitch" unit="см" />
+              <Num label="Вата в полости" path="wall.woolT" unit="мм" />
+            </div>
+            <Chk label="Минвата в стене" checked={cfg.wall.woolOn !== false} onChange={(v) => set('wall.woolOn', v)} />
+            <Seg value={cfg.wall.edge} options={[['tape', 'Вибролента по контуру'], ['bracket', 'Виброопоры по краям'], ['rigid', 'Жёстко']]} onChange={(v) => set('wall.edge', v)} />
+            {model.wall && <small className="note">Толщина стены {fmtN(model.wall.dims.total * 1000, 0)} мм · резонанс ≈ {fmtN(model.wall.f0, 0)} Гц. Акустические подвесы по краям не нужны: направляющие на виброленту, зазор 5–10 мм у скатов и стен под акустический герметик, ГКЛ в боковые поверхности не крепить.</small>}
+          </>
+        )}
+      </section>
       {['walls', 'slopes', 'ceiling'].map((g) => (
         <section key={g}>
           <h2>Подвесы: {GROUP_NAMES[g].toLowerCase()}</h2>
@@ -352,7 +369,7 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
   /* ---------- вкладка «Смета» ---------- */
   const [open, setOpen] = useState(null)
   const est = model.estimate
-  const groups = ['frame', 'wool', 'gkl', 'battens', 'boards', 'paint', 'vent', 'extra']
+  const groups = ['frame', 'wool', 'gkl', 'battens', 'boards', 'paint', 'wall', 'vent', 'extra']
   const setPrice = (id, k, v) => setRen((r) => ({ ...r, cfg: { ...r.cfg, prices: { ...r.cfg.prices, [id]: { ...(r.cfg.prices[id] || {}), [k]: v } } } }))
   const TabEst = () => (
     <>

@@ -129,7 +129,7 @@ function WindowUnit({ d, mode, maskId = 1 }) {
 
 function DoorUnit({ d, open }) {
   const { doorW: w, doorH: h, doorX: x, L } = d
-  const D = K.doorWallT
+  const D = d.wallT
   const wood = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e3da', roughness: 0.55 }), [])
   const frame = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f1eee8', roughness: 0.5 }), [])
   const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b9b9b9', roughness: 0.25, metalness: 0.85 }), [])
@@ -191,7 +191,7 @@ function Lights({ d, mode, cut }) {
     const n = Math.max(2, Math.round(len / 1.25))
     return Array.from({ length: n }, (_, i) => z0 + (len * (i + 0.5)) / n)
   }
-  const zs = [...(cut ? [] : row(0, d.L)), ...row(d.L + K.doorWallT, d.L2 - K.doorWallT), ...row(d.zG, d.L3)]
+  const zs = [...(cut ? [] : row(0, d.L)), ...row(d.L + d.wallT, d.L2 - d.wallT), ...row(d.zG, d.L3)]
   return (
     <>
       <ambientLight color={day ? '#fbf8f3' : '#9aa6c4'} intensity={day ? 1.25 : 0.18} />
@@ -337,7 +337,7 @@ function ZoneOverlay({ d, hl, withWall }) {
 
 export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, setHl, view }) {
   const { L, W, kH, cH, cW, zEnd, zG } = d
-  const { doorWall, doorOpen, slideOpen, cabOpen, hatchOpen, roof, utility, facade, interactive, ceilCut, radHide } = view
+  const { doorWall, doorMesh = doorWall, doorUnit = doorWall, doorOpen, slideOpen, cabOpen, hatchOpen, roof, utility, facade, interactive, ceilCut, radHide } = view
   const paintA = useMemo(() => makePaint(3), [])
   const paintB = useMemo(() => makePaint(11), [])
   const floorTex = useMemo(() => makeLaminate(floorKey), [floorKey])
@@ -375,7 +375,7 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
   }, [d, utility])
 
   // при ремонте натяжной потолок кабинета снимается — остаётся только над спальней и кухней
-  const zStart = ceilCut ? d.L + K.doorWallT : 0
+  const zStart = ceilCut ? d.L + d.wallT : 0
   const winRef = useRef()
   const win2Ref = useRef()
   // без фасада окна прячутся вместе со стеной, когда камера смотрит на неё снаружи
@@ -427,17 +427,17 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
       <mesh geometry={geoms.windowWall} castShadow receiveShadow {...ev('windowWall')}>
         <Paint map={paintA} color={colors.windowWall} active={hl === 'windowWall'} />
       </mesh>
-      {doorWall && (
+      {doorMesh && (
         <>
           <mesh geometry={geoms.doorWall} position={[0, 0, L]} rotation={[0, Math.PI, 0]} castShadow receiveShadow {...ev('doorWall')}>
             <Paint map={paintB} color={colors.doorWall} active={hl === 'doorWall'} />
           </mesh>
-          <mesh geometry={geoms.doorWallBack} position={[0, 0, L + K.doorWallT]} castShadow receiveShadow {...ev('doorWall')}>
+          <mesh geometry={geoms.doorWallBack} position={[0, 0, L + d.wallT]} castShadow receiveShadow {...ev('doorWall')}>
             <Paint map={paintB} color={colors.doorWall} active={hl === 'doorWall'} />
           </mesh>
-          <DoorUnit d={d} open={doorOpen} />
         </>
       )}
+      {doorUnit && <DoorUnit d={d} open={doorOpen} />}
 
       {/* натяжной потолок: глянец с отражением, по всей длине */}
       <mesh position={[0, cH, (zEnd + zStart) / 2]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow {...ev('ceiling')}>

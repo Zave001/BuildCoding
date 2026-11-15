@@ -16,6 +16,14 @@ export function stackOf(cfg, id = 'kneeL') {
   const board = cfg.finish === 'boards'
   const bt = cfg.battens.t / 1000
   const bb = cfg.boards.thickness / 1000
+  if (id === 'doorWall') {
+    // новая стена строится сама (каркас + вата + ГКЛ); на поверхности стены в кабинете остаётся только чистовая отделка
+    const base = { frame: false, reach: 0, ph: 0, pw: 0, levels: 0, frameDepth: 0, profA: null, profB: null, dw: [], dwEnd: 0, g: 0 }
+    if (!board) return { ...base, mode: 'wallFinish', battens: null, boards: null, total: 0.003 }
+    // вагонка прямо на ГКЛ стены крепится в вертикальные стойки — это возможно только при горизонтальной укладке
+    if (cfg.mount === 'direct' && cfg.boardDir === 'horizontal') return { ...base, mode: 'wallDirect', battens: null, boards: [0, bb], total: bb }
+    return { ...base, mode: 'wallFinish', battens: [0, bt], boards: [bt, bt + bb], total: bt + bb }
+  }
   if (id === 'ceiling' && board && cfg.ceiling.mode === 'plywood') {
     return { mode: 'plywood', frame: false, reach: 0, ph: 0, pw: 0, levels: 0, frameDepth: 0, profA: null, profB: null, dw: [], dwEnd: 0, battens: [0, bt], boards: [bt, bt + bb], total: bt + bb, g: 0 }
   }
@@ -43,6 +51,31 @@ export function stackOf(cfg, id = 'kneeL') {
     total = dwEnd + bt + bb
   } else total = dwEnd + 0.003
   return { mode: direct ? 'direct' : 'frame', frame: true, reach, ph, pw, levels, frameDepth, profA: [reach, reach + ph], profB: levels === 2 ? [reach + ph, reach + 2 * ph] : null, dw, dwEnd, battens, boards, total, g }
+}
+
+/** Размеры новой стены с дверью по толщине: ГКЛ кабинета, каркас, ГКЛ зала. w отсчитывается от стороны кабинета к залу. */
+export function wallDims(cfg) {
+  const g = cfg.drywall.thickness / 1000
+  const nl = cfg.drywall.layers
+  const fd = cfg.wall.frame / 1000
+  return {
+    g, nl, fd,
+    frameZ: [nl * g, nl * g + fd],
+    cabZ: (k) => [(nl - 1 - k) * g, (nl - k) * g], // k = 0 — первый слой у каркаса, дальше к лицевой стороне
+    hallZ: (k) => [nl * g + fd + k * g, nl * g + fd + (k + 1) * g],
+    total: 2 * nl * g + fd,
+  }
+}
+export const wallThickness = (cfg) => wallDims(cfg).total
+
+/** Стена с дверью построена (каркас с этапа профиля) и дверь установлена (с первого слоя ГКЛ). */
+export function wallBuiltAt(cfg, stage) {
+  const keys = stagesFor(cfg).map((s) => s.key)
+  return Math.min(stage, keys.length - 1) >= keys.indexOf('profile')
+}
+export function doorInstalledAt(cfg, stage) {
+  const keys = stagesFor(cfg).map((s) => s.key)
+  return Math.min(stage, keys.length - 1) >= keys.indexOf('gkl1')
 }
 
 /** Геометрия кабинета после демонтажа натяжного потолка: основание потолка (фанера) выше на величину gap. */
@@ -138,6 +171,7 @@ export function thicknessAtStage(cfg, stage, frameOnly = false) {
  */
 export function renState(d0, cfg, stage, frameOnly = false) {
   const { T, has } = thicknessAtStage(cfg, stage, frameOnly)
+  if (!wallBuiltAt(cfg, stage)) T.doorWall = 0 // стены ещё нет — граница кабинета по z не сдвигается
   const d = demoReached(cfg, stage) ? studyGeometry(d0, cfg) : d0
   if (Math.max(...Object.values(T)) < 1e-6 && d === d0) return null
   const sec = innerSection(d, T)

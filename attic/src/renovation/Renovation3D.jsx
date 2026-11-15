@@ -108,7 +108,34 @@ function buildAll(model, cfg) {
       outline: outlinePoints(surf),
     }
   }
-  return { per, hanger: hM.geometry(), rubber: hR.geometry(), crab: crab.geometry(), joint: joint.geometry(), screw: screw.geometry() }
+  // новая стена с дверью: плоскость z = L, w отсчитывается от кабинета к залу
+  let wallG = null
+  if (model.wall) {
+    const wl = model.wall
+    const wd = wl.dims
+    const frameSurf = { O: [0, 0, model.d.L], ex: [1, 0, 0], ey: [0, 1, 0], n: [0, 0, 1] }
+    const mkW = () => new Builder(frameSurf)
+    const frame = mkW()
+    ;[...wl.tracks, ...wl.studs.map((s) => s.poly)].forEach((p) => frame.prism(p, wd.frameZ[0], wd.frameZ[1]))
+    const tapeB = mkW()
+    wl.tape.forEach((p) => tapeB.prism(p, wd.frameZ[0], wd.frameZ[1]))
+    wl.pads.forEach(([x, y]) => tapeB.prism([[x - 0.03, y - 0.03], [x + 0.03, y - 0.03], [x + 0.03, y + 0.03], [x - 0.03, y + 0.03]], wd.frameZ[0], wd.frameZ[1]))
+    const woolB = mkW()
+    const w0 = wd.frameZ[0] + (wd.fd - wl.tw) / 2
+    wl.wool.forEach((p) => woolB.prism(p, w0, w0 + wl.tw))
+    const cab = []
+    const hall = []
+    for (let k = 0; k < wd.nl; k++) {
+      const cb = mkW()
+      const hb = mkW()
+      wl.sheets.cab[k].forEach((sh) => cb.prism(sh.poly, ...wd.cabZ(k)))
+      wl.sheets.hall[k].forEach((sh) => hb.prism(sh.poly, ...wd.hallZ(k)))
+      cab.push(cb.geometry())
+      hall.push(hb.geometry())
+    }
+    wallG = { frame: frame.geometry(), tape: tapeB.geometry(), wool: woolB.geometry(), cab, hall }
+  }
+  return { wallG, per, hanger: hM.geometry(), rubber: hR.geometry(), crab: crab.geometry(), joint: joint.geometry(), screw: screw.geometry() }
 }
 
 /* ---------- мелкие компоненты ---------- */
@@ -315,6 +342,24 @@ export default function Renovation3D({ d, model, cfg, ui, stage, inRen = true, s
         )
       })}
 
+      {/* новая стена с дверью: каркас → вата → ГКЛ с двух сторон (подвесов у неё нет) */}
+      {geo.wallG && (
+        <group>
+          <Fade on={reached('profile')}>
+            <mesh geometry={geo.wallG.frame} material={M.steel} castShadow receiveShadow />
+            <mesh geometry={geo.wallG.tape} material={M.rubber} />
+          </Fade>
+          <Fade on={reached('wool') && cfg.wall.woolOn !== false}>
+            <mesh geometry={geo.wallG.wool} material={M.wool} receiveShadow />
+          </Fade>
+          {geo.wallG.cab.map((g, k) => (
+            <Fade key={'wk' + k} on={k === 0 ? reached('gkl1') && !cfg.drywall.hide1 : reached('gkl2') && !cfg.drywall.hide2}>
+              <mesh geometry={g} material={k === 0 ? M.dw1 : M[lastSheet]} receiveShadow castShadow />
+              <mesh geometry={geo.wallG.hall[k]} material={k === 0 ? M.dw1 : M[lastSheet]} receiveShadow castShadow />
+            </Fade>
+          ))}
+        </group>
+      )}
       {inRen && selBoard && <mesh geometry={selBoard} material={M.sel} />}
       {inRen && selLine && (
         <group>

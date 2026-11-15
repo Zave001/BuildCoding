@@ -111,6 +111,11 @@ export default function VentUI({ ren, setRen, model }) {
                   <small className="note">{sys.extract ? EXTRACTS[v.extract].name : 'У выбранной системы своей вытяжки нет — воздух уходит через зазор двери.'}</small>
                 </section>
                 <section>
+                  <h2>Выход воздуха через окно</h2>
+                  <Chk label="Воздух уходит через открытое окно «по надобности»" checked={!!v.windowOutlet} onChange={(x) => set('vent.windowOutlet', x)} />
+                  <small className="note">Проверяет «замыкание» притока у окна и шум при открытой створке.</small>
+                </section>
+                <section>
                   <h2>Параметры</h2>
                   <div className="grid">
                     <Num label="Расход" path="vent.flow" unit="м³/ч" />

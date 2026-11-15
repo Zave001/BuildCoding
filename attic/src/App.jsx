@@ -9,7 +9,7 @@ import BuildUI from './BuildUI'
 import EditorFly, { CC_BUTTONS } from './Fly'
 import { DEFAULT_CFG, mergeCfg } from './renovation/data'
 import { computeRenovation } from './renovation/calc'
-import { renState, demoReached } from './renovation/stack'
+import { renState, demoReached, wallThickness, wallBuiltAt, doorInstalledAt } from './renovation/stack'
 import { stagesFor } from './renovation/data'
 import Renovation3D from './renovation/Renovation3D'
 import Section3D, { SECTION_ORIGIN } from './renovation/Section3D'
@@ -24,7 +24,7 @@ const VIEWS = {
   overview: { label: 'Обзор', pos: (d) => [d.xE + 0.3, 8.6, d.zEnd + 5.2], tgt: (d) => [0, 0.4, d.zEnd * 0.42] },
   outside: { label: 'Снаружи', pos: (d) => [-d.xE - 5.5, 6.2, -5.5], tgt: (d) => [0, 0.6, d.zEnd * 0.35] },
   photo: { label: 'Кабинет', pos: (d) => [0.05, 1.45, d.L - 0.2], tgt: (d) => [0, 1.15, 0] },
-  photo2: { label: 'Спальня', pos: (d) => [0.1, 1.45, d.L + K.doorWallT + 0.1], tgt: (d) => [0.1, 1.0, d.zG] },
+  photo2: { label: 'Спальня', pos: (d) => [0.1, 1.45, d.L + d.wallT + 0.1], tgt: (d) => [0.1, 1.0, d.zG] },
   back: { label: 'Кухня', pos: (d) => [-0.6, 1.5, d.zG + 0.35], tgt: (d) => [0.1, 1.05, d.zEnd] },
   back2: { label: 'К купе', pos: (d) => [0.6, 1.5, d.zEnd - 0.35], tgt: (d) => [-0.3, 1.0, d.zG] },
   hatch: { label: 'Подсобка', pos: (d) => [-0.2, 0.95, (d.hz0 + d.hz1) / 2 + 0.2], tgt: (d) => [-d.W / 2, 0.62, (d.hz0 + d.hz1) / 2] },
@@ -120,7 +120,19 @@ function NumberField({ label, value, onChange, step = 0.01 }) {
 
 export default function App() {
   const [p, setP] = useState({ ...DEFAULTS, ...SAVED.p })
-  const d = useMemo(() => derive(p), [p])
+  const [ren, setRen] = useState(() => {
+    const r = loadRen()
+    return HASH.get('stage') ? { ...r, stage: +HASH.get('stage') } : r
+  })
+  const [rsel, setRsel] = useState({ surface: null, board: null })
+  useEffect(() => {
+    try {
+      localStorage.setItem(REN_KEY, JSON.stringify({ cfg: ren.cfg, stage: ren.stage, ui: { ...ren.ui, playing: false } }))
+    } catch { /* без хранилища тоже работает */ }
+  }, [ren])
+  // толщина новой стены с дверью определяется её конструкцией (ГКЛ + профиль + ГКЛ)
+  const wallT = useMemo(() => wallThickness(ren.cfg), [ren.cfg])
+  const d = useMemo(() => derive({ ...p, doorWallT: wallT }), [p, wallT])
   const [viewReq, setViewReq] = useState({ k: VIEWS[HASH.get('view')] ? HASH.get('view') : 'overview', n: 0 })
   const [mode, setMode] = useState(SAVED.mode || 'day')
   const [showDims, setShowDims] = useState(SAVED.showDims ?? true)
@@ -138,16 +150,6 @@ export default function App() {
       return []
     }
   })
-  const [ren, setRen] = useState(() => {
-    const r = loadRen()
-    return HASH.get('stage') ? { ...r, stage: +HASH.get('stage') } : r
-  })
-  const [rsel, setRsel] = useState({ surface: null, board: null })
-  useEffect(() => {
-    try {
-      localStorage.setItem(REN_KEY, JSON.stringify({ cfg: ren.cfg, stage: ren.stage, ui: { ...ren.ui, playing: false } }))
-    } catch { /* без хранилища тоже работает */ }
-  }, [ren])
   // ремонт виден во всех режимах (если не выключено), а коллизии берут толщины слоёв текущего этапа
   const showRen = nav === 'renovation' || nav === 'vent' || ren.ui.apply !== false
   const rmodel = useMemo(() => (showRen ? computeRenovation(d, ren.cfg) : null), [d, ren.cfg, showRen])
@@ -179,11 +181,18 @@ export default function App() {
   const cc = useRef()
   const three = useRef(null)
   const fromPose = useRef(null)
-  const segs = useMemo(() => walkSegments(dr, scene), [dr, scene])
-  const zones = useMemo(() => roomZones(d, scene.doorWall), [d, scene.doorWall])
+  // новая стена с дверью: её нет до этапа каркаса, дверь ставится с первого слоя ГКЛ; без блока «Ремонт» стена как в исходной модели
+  const wallOn = ren.cfg.wall.enabled !== false
+  const wallSolid = scene.doorWall && (!showRen || !wallOn || wallBuiltAt(ren.cfg, ren.stage))
+  const doorUnitOn = scene.doorWall && (!showRen || !wallOn || doorInstalledAt(ren.cfg, ren.stage))
+  const doorMeshOn = scene.doorWall && (!showRen || !wallOn)
+  const sceneEff = useMemo(() => ({ ...scene, doorWall: wallSolid, doorUnit: doorUnitOn }), [scene, wallSolid, doorUnitOn])
+  const dCab = showRen && demoReached(ren.cfg, ren.stage) && rmodel?.raised ? rmodel.d : d // кабинет с поднятым потолком — скаты удлинены
+  const segs = useMemo(() => walkSegments(dr, sceneEff), [dr, sceneEff])
+  const zones = useMemo(() => roomZones(d, wallSolid, dCab), [d, wallSolid, dCab])
   const placed = useMemo(() => resolve(items), [items])
   const furnSegs = useMemo(() => furnSegments(placed), [placed])
-  const doors = useMemo(() => [...doorList(d, scene), ...screenList(placed)], [d, scene, placed])
+  const doors = useMemo(() => [...doorList(d, sceneEff), ...screenList(placed)], [d, sceneEff, placed])
   const toggleDoor = useCallback((id) => {
     if (String(id).startsWith('screen:')) {
       const sid = id.slice(7)
@@ -297,7 +306,7 @@ export default function App() {
           showDims={showDims && nav !== 'walk' && nav !== 'renovation' && nav !== 'vent'}
           hl={hl}
           setHl={setHl}
-          view={{ ...scene, interactive: nav === 'edit', ceilCut: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.ceiling.removeStretch && ren.cfg.ceiling.gap > 0, radHide: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.radiatorOut }}
+          view={{ ...scene, doorWall: wallSolid, doorMesh: doorMeshOn, doorUnit: doorUnitOn, interactive: nav === 'edit', ceilCut: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.ceiling.removeStretch && ren.cfg.ceiling.gap > 0, radHide: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.radiatorOut }}
         />
         {rmodel && (
           <Renovation3D
@@ -317,7 +326,7 @@ export default function App() {
         {nav === 'renovation' && rmodel && ren.ui.section && <Section3D model={rmodel} cfg={ren.cfg} ui={ren.ui} surfId={ren.ui.surface} />}
         <FurnitureLayer
           d={dr}
-          sc={scene}
+          sc={sceneEff}
           nav={nav}
           items={items}
           setItems={setItems}
