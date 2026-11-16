@@ -24,6 +24,15 @@ function M() {
     pillow: std({ map: makeSheet(), color: '#e6dccb', roughness: 0.95 }),
     leather: std({ map: makeLeather(), roughness: 0.48, metalness: 0.02 }),
     plastic: std({ color: '#17171a', roughness: 0.5 }),
+    printerWhite: std({ color: '#e9e8e3', roughness: 0.45 }),
+    printerLid: std({ color: '#cfcfca', roughness: 0.4 }),
+    paper: std({ color: '#fafaf8', roughness: 0.9 }),
+    grille: std({ color: '#0e0e10', roughness: 0.9 }),
+    cone: std({ color: '#26262a', roughness: 0.7 }),
+    rubber: std({ color: '#050506', roughness: 1 }),
+    cherry: std({ map: makeOakLight(), color: '#9c5a3a', roughness: 0.42, metalness: 0.03 }),
+    cherryDark: std({ map: makeOakLight(), color: '#5e2d1c', roughness: 0.5 }),
+    brass: std({ color: '#b8923d', roughness: 0.3, metalness: 0.85 }),
     tvBody: std({ color: '#0d0d0f', roughness: 0.4, metalness: 0.2 }),
     tvChin: std({ color: '#1b1c1f', roughness: 0.35, metalness: 0.5 }),
     knit: makeKnit(),
@@ -214,6 +223,162 @@ function Dresser({ item }) {
   )
 }
 
+/* ---------- тумба 40 × 50 × 60: три ящика, вишня, латунные ручки (по фото) ---------- */
+
+function Nightstand() {
+  const m = M()
+  const W = 0.4
+  const D = 0.5
+  const H = 0.6
+  const t = 0.02 // толщина корпусных щитов
+  const topT = 0.025
+  const base = 0.02 // цоколь
+  const frontZ = D / 2
+  // три ящика: верхний ниже остальных, как на фото
+  const rows = [
+    { h: 0.15, handle: 'knob' },
+    { h: 0.2, handle: 'bow' },
+    { h: 0.2, handle: 'bow' },
+  ]
+  const innerH = H - topT - base
+  const gap = 0.006
+  const totalRows = rows.reduce((s, r) => s + r.h, 0)
+  const scale = (innerH - gap * (rows.length + 1)) / totalRows
+  let y = base + gap
+  const fronts = [...rows].reverse().map((r) => {
+    const h = r.h * scale
+    const cy = y + h / 2
+    y += h + gap
+    return { ...r, h, cy }
+  })
+  return (
+    <group>
+      {/* столешница с небольшим свесом спереди */}
+      <Box s={[W, topT, D]} p={[0, H - topT / 2, 0]} m={m.cherry} g="x" />
+      <Box s={[W + 0.012, 0.008, D + 0.012]} p={[0, H - topT - 0.004, 0.0]} m={m.cherry} g="x" />
+      {/* боковины, задняя стенка, дно */}
+      {[-1, 1].map((k) => (
+        <Box key={k} s={[t, H - topT - base, D - 0.01]} p={[k * (W / 2 - t / 2), base + (H - topT - base) / 2, -0.005]} m={m.cherry} g="y" />
+      ))}
+      <Box s={[W - 2 * t, H - topT - base, 0.01]} p={[0, base + (H - topT - base) / 2, -D / 2 + 0.005]} m={m.cherryDark} g="y" />
+      <Box s={[W - 2 * t, 0.015, D - 0.02]} p={[0, base + 0.0075, 0]} m={m.cherry} g="x" />
+      {/* цоколь */}
+      <Box s={[W - 0.02, base, D - 0.04]} p={[0, base / 2, -0.01]} m={m.cherryDark} g="x" />
+      {/* фасады ящиков с филёнкой по периметру */}
+      {fronts.map((f, i) => (
+        <group key={i} position={[0, f.cy, frontZ - 0.01]}>
+          <Box s={[W - 2 * t - 0.004, f.h, 0.02]} p={[0, 0, 0]} m={m.cherry} g="x" />
+          {/* рамка-филёнка: приподнятый прямоугольник в центре */}
+          <Box s={[W - 2 * t - 0.05, f.h - 0.045, 0.008]} p={[0, 0, 0.012]} m={m.cherry} g="x" />
+          <Box s={[W - 2 * t - 0.05, 0.004, 0.012]} p={[0, (f.h - 0.045) / 2, 0.012]} m={m.cherryDark} g="x" />
+          <Box s={[W - 2 * t - 0.05, 0.004, 0.012]} p={[0, -(f.h - 0.045) / 2, 0.012]} m={m.cherryDark} g="x" />
+          {f.handle === 'knob' ? (
+            <group position={[0, 0.0, 0.025]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]} material={m.brass} castShadow>
+                <cylinderGeometry args={[0.013, 0.013, 0.012, 16]} />
+              </mesh>
+              <mesh position={[0, 0, 0.004]} material={m.brass}>
+                <sphereGeometry args={[0.012, 12, 8]} />
+              </mesh>
+            </group>
+          ) : (
+            <group position={[0, f.h * 0.1, 0.02]}>
+              {/* дужка и две стойки */}
+              <mesh position={[0, 0, 0.012]} rotation={[0, 0, Math.PI / 2]} material={m.brass} castShadow>
+                <cylinderGeometry args={[0.004, 0.004, 0.1, 10]} />
+              </mesh>
+              {[-1, 1].map((k) => (
+                <mesh key={k} position={[k * 0.048, 0, 0.005]} rotation={[Math.PI / 2, 0, 0]} material={m.brass}>
+                  <cylinderGeometry args={[0.004, 0.004, 0.016, 8]} />
+                </mesh>
+              ))}
+            </group>
+          )}
+        </group>
+      ))}
+    </group>
+  )
+}
+
+/* ---------- МФУ Brother DCP-15xx: 385 × 340 × 255 мм ---------- */
+
+function Printer() {
+  const m = M()
+  const W = 0.385
+  const D = 0.34
+  const H = 0.255
+  const lowH = 0.135 // белый корпус
+  const fz = D / 2
+  return (
+    <group>
+      {/* белый корпус */}
+      <Soft s={[W, lowH, D]} p={[0, lowH / 2 + 0.004, 0]} m={m.printerWhite} r={0.012} />
+      {/* чёрная средняя часть: приёмный лоток и панель */}
+      <Box s={[W, 0.05, D - 0.02]} p={[0, lowH + 0.029, -0.005]} m={m.plastic} g="x" />
+      <Box s={[W - 0.03, 0.03, 0.01]} p={[0, lowH + 0.022, fz - 0.002]} m={m.tvChin} g="x" />
+      {/* крышка сканера */}
+      <Soft s={[W - 0.01, 0.055, D - 0.02]} p={[0, lowH + 0.082, -0.005]} m={m.printerLid} r={0.01} />
+      <Box s={[0.1, 0.004, 0.06]} p={[0.08, lowH + 0.112, 0.06]} m={m.tvChin} g="x" />
+      {/* выдвинутый лоток с бумагой */}
+      <Box s={[0.22, 0.008, 0.09]} p={[0, 0.034, fz + 0.03]} m={m.printerWhite} g="x" />
+      <Box s={[0.2, 0.022, 0.08]} p={[0, 0.049, fz + 0.03]} m={m.paper} g="x" />
+      <Box s={[0.07, 0.012, 0.02]} p={[0, 0.04, fz + 0.075]} m={m.plastic} g="x" />
+      {/* ножки */}
+      {[-1, 1].flatMap((a) => [-1, 1].map((b) => (
+        <Box key={a + '_' + b} s={[0.03, 0.004, 0.03]} p={[a * (W / 2 - 0.03), 0.002, b * (D / 2 - 0.03)]} m={m.rubber} g="x" />
+      )))}
+    </group>
+  )
+}
+
+/* ---------- Leem SPA-15: 485 × 400 × 755 мм ---------- */
+
+function Speaker() {
+  const m = M()
+  const W = 0.485
+  const D = 0.4
+  const H = 0.755
+  const fz = D / 2 // плоскость решётки спереди
+  return (
+    <group>
+      {/* корпус */}
+      <Soft s={[W, H, D]} p={[0, H / 2, 0]} m={m.plastic} r={0.018} />
+      {/* лицевая решётка с вырезом под НЧ и рупор */}
+      <Box s={[W - 0.03, H - 0.04, 0.012]} p={[0, H / 2, fz + 0.002]} m={m.grille} g="x" />
+      {/* НЧ-динамик 15″: диффузор и пылезащитный колпак */}
+      <group position={[0, 0.27, fz + 0.012]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} material={m.plastic}>
+          <cylinderGeometry args={[0.2, 0.2, 0.006, 40]} />
+        </mesh>
+        <mesh position={[0, 0, 0.004]} rotation={[Math.PI / 2, 0, 0]} material={m.cone}>
+          <cylinderGeometry args={[0.17, 0.12, 0.012, 40]} />
+        </mesh>
+        <mesh position={[0, 0, 0.012]} material={m.plastic}>
+          <sphereGeometry args={[0.04, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        </mesh>
+      </group>
+      {/* ВЧ-рупор */}
+      <Box s={[0.32, 0.17, 0.02]} p={[0, 0.62, fz + 0.014]} m={m.plastic} g="x" />
+      <mesh position={[0, 0.62, fz + 0.028]} rotation={[Math.PI / 2, 0, 0]} material={m.cone}>
+        <cylinderGeometry args={[0.05, 0.02, 0.012, 20]} />
+      </mesh>
+      {/* фазоинвертор */}
+      <mesh position={[0, 0.05, fz + 0.012]} rotation={[Math.PI / 2, 0, 0]} material={m.plastic}>
+        <cylinderGeometry args={[0.02, 0.02, 0.01, 16]} />
+      </mesh>
+      {/* ручки по бокам и логотип-планка */}
+      {[-1, 1].map((k) => (
+        <Box key={k} s={[0.012, 0.03, 0.14]} p={[k * (W / 2 + 0.004), 0.55, 0]} m={m.steel} g="x" />
+      ))}
+      <Box s={[0.08, 0.012, 0.004]} p={[0, 0.7, fz + 0.016]} m={m.steel} g="x" />
+      {/* ножки */}
+      {[-1, 1].flatMap((a) => [-1, 1].map((b) => (
+        <Box key={a + '_' + b} s={[0.03, 0.01, 0.03]} p={[a * (W / 2 - 0.04), 0.005, b * (D / 2 - 0.04)]} m={m.rubber} g="x" />
+      )))}
+    </group>
+  )
+}
+
 /* ---------- кровать 210 × 200 × 50, спинка 110, серый плед ---------- */
 
 function useBlanket() {
@@ -378,6 +543,9 @@ export function Model({ item }) {
     case 'table': return <Table />
     case 'screen': return <Screen item={item} />
     case 'dresser': return <Dresser item={item} />
+    case 'nightstand': return <Nightstand />
+    case 'speaker': return <Speaker />
+    case 'printer': return <Printer />
     case 'bed': return <Bed item={item} />
     case 'tv': return <TV item={item} />
     case 'chair': return <Chair item={item} />
