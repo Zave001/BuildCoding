@@ -330,7 +330,8 @@ export default function App() {
         {designOn && <Design3D model={rmodel} cfg={ren.cfg} curtainOpen={scene.curtainOpen} day={mode === 'day'} />}
         {rmodel?.vent && ren.cfg.vent.show && <Vent3D vent={rmodel.vent} cfg={ren.cfg} labels={nav === 'renovation' || nav === 'vent'} />}
         {nav === 'renovation' && rmodel && ren.ui.section && <Section3D model={rmodel} cfg={ren.cfg} ui={ren.ui} surfId={ren.ui.surface} />}
-        <FurnitureLayer
+        {/* мебель можно скрыть визуально (чекбокс в «Виде» и «Скрыть мебель» во вкладке «Мебель») */}
+        {scene.furniture !== false && <FurnitureLayer
           d={dr}
           sc={sceneEff}
           nav={nav}
@@ -342,7 +343,7 @@ export default function App() {
           setSelected={setSelected}
           setStatus={setStatus}
           api={furnApi}
-        />
+        />}
         {/* сетка — на уровне площадки лестницы, чтобы не перечёркивать лестничный проём */}
         <Grid position={[0, -K.stairDrop - 0.01, d.zEnd / 2]} args={[30, 30]} cellSize={0.5} sectionSize={1} cellColor="#2a3038" sectionColor="#3a424d" fadeDistance={30} fadeStrength={1.5} infiniteGrid />
         {nav !== 'walk' ? (
@@ -351,7 +352,7 @@ export default function App() {
             <EditorFly cc={cc} />
           </>
         ) : (
-          <Walker d={dr} segs={segs} furn={furnSegs} doors={doors} hatchOpen={scene.hatchOpen} utility={scene.utility} onLock={setLocked} onNear={setNear} onInteract={toggleDoor} />
+          <Walker d={dr} segs={segs} furn={scene.furniture !== false ? furnSegs : []} doors={doors} hatchOpen={scene.hatchOpen} utility={scene.utility} onLock={setLocked} onNear={setNear} onInteract={toggleDoor} />
         )}
       </Canvas>
 
@@ -430,6 +431,9 @@ export default function App() {
                 </label>
                 <label className="chk">
                   <input type="checkbox" checked={gloss} onChange={(e) => setGloss(e.target.checked)} /> Глянец
+                </label>
+                <label className="chk">
+                  <input type="checkbox" checked={scene.furniture !== false} onChange={(e) => sc('furniture', e.target.checked)} /> Мебель
                 </label>
               </div>
             </section>
@@ -598,6 +602,8 @@ export default function App() {
           status={status}
           count={items.length}
           onClear={() => { setItems([]); setSelected(null) }}
+          hidden={scene.furniture === false}
+          onHide={(v) => { sc('furniture', !v); if (v) { setSelected(null); setTool(null) } }}
         />
       )}
 

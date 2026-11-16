@@ -28,7 +28,7 @@ const ICONS = {
 
 const cm = (v) => Math.round(v * 100)
 
-export default function BuildUI({ tool, setTool, setSelected, item, update, api, status, onClear, count }) {
+export default function BuildUI({ tool, setTool, setSelected, item, update, api, status, onClear, count, hidden, onHide }) {
   const [cat, setCat] = useState('all')
   const list = Object.entries(CATALOG).filter(([, c]) => cat === 'all' || c.cat === cat)
   const c = item ? CATALOG[item.type] : null
@@ -46,6 +46,9 @@ export default function BuildUI({ tool, setTool, setSelected, item, update, api,
             {tool ? <b>Ставим: {CATALOG[tool.type].name}</b> : 'Выберите предмет или щёлкните по расставленному'}
             <span> · стрелки — сдвиг (Alt — 1 см) · R — поворот 90° · Q/E — 15° · Ctrl — ставить ещё · Del — убрать · Esc — отмена</span>
           </div>
+          <label className={'chk hide-furn' + (hidden ? ' on' : '')}>
+            <input type="checkbox" checked={!!hidden} onChange={(e) => onHide(e.target.checked)} /> Скрыть мебель{hidden && count > 0 ? ` (${count})` : ''}
+          </label>
           {count > 0 && <button className="ghost small" onClick={onClear}>Убрать всё ({count})</button>}
         </div>
         <div className="cards">
@@ -55,6 +58,7 @@ export default function BuildUI({ tool, setTool, setSelected, item, update, api,
               className={'card-item' + (tool?.type === type ? ' on' : '')}
               onClick={() => {
                 setSelected(null)
+                if (hidden) onHide(false) // ставим новый предмет — расстановку снова показываем
                 setTool(tool?.type === type ? null : { type, props: {} })
               }}
             >

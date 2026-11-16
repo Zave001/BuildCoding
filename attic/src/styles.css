@@ -316,3 +316,7 @@ table.cmp tbody tr { cursor: pointer; }
 
 tr.zone-h td { padding-top: 10px; font-weight: 650; color: #ffb547; }
 tr.zone-h small { color: #8b96a1; font-weight: 400; margin-left: 6px; }
+/* «Скрыть мебель» во вкладке «Мебель»: заметная плашка, при включении — акцентная */
+.chk.hide-furn { padding: 6px 12px; border: 1px solid #ffb547; border-radius: 8px; color: #ffd08a; font-weight: 600; white-space: nowrap; }
+.chk.hide-furn.on { background: #ffb547; color: #1b1406; }
+.chk.hide-furn.on input { accent-color: #1b1406; }
