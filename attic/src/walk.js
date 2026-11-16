@@ -141,6 +141,7 @@ export function doorList(d, sc) {
   if (sc.doorWall && sc.doorUnit !== false) list.push({ id: 'entry', x: d.doorX, z: d.L + d.wallT / 2, open: sc.doorOpen, name: 'дверь' })
   list.push({ id: 'slide', x: (d.xC + d.xS) / 2, z: d.zG, open: sc.slideOpen, name: 'дверь-купе' })
   if (sc.utility ?? true) list.push({ id: 'hatch', x: -d.W / 2, z: (d.hz0 + d.hz1) / 2, open: sc.hatchOpen, name: 'дверь в подсобку', reach: 1.7 })
+  if (sc.curtains) list.push({ id: 'curtain', x: 0, z: (sc.curtainZ ?? 0.2), open: sc.curtainOpen, name: 'шторы', reach: 2.6 })
   list.push({ id: 'cabin', x: d.cabDoor.x0 + d.cabDoor.w / 2, z: d.zC, open: sc.cabOpen, name: 'дверь санузла' })
   return list
 }

@@ -83,42 +83,103 @@ export const drywallTex = () =>
     return toTexture(c, 1, 1)
   })
 
-/** Дерево вагонки/реек: волокна вдоль оси u. Плитка 0,5 м. */
+// периодический value-noise: плитка бесшовная по обеим осям
+function makeNoise(seed, NX = 16, NY = NX) {
+  const r = rng(seed)
+  const grid = Array.from({ length: NX * NY }, () => r())
+  const at = (i, j) => grid[(((j % NY) + NY) % NY) * NX + (((i % NX) + NX) % NX)]
+  const sm = (t) => t * t * (3 - 2 * t)
+  return (x, y) => {
+    const i = Math.floor(x)
+    const j = Math.floor(y)
+    const fx = sm(x - i)
+    const fy = sm(y - j)
+    return (at(i, j) * (1 - fx) + at(i + 1, j) * fx) * (1 - fy) + (at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx) * fy
+  }
+}
+
+/**
+ * Дерево вагонки/реек: волокна вдоль оси u. Годичные кольца (тангенциальный рисунок «ёлочкой»),
+ * поздняя/ранняя древесина полосами, сучки с обтекающими волокнами, смоляные кармашки. Плитка 0,5 м.
+ */
 export const woodTex = (key) =>
   once('wood' + key, () => {
     const sp = SPECIES[key] || SPECIES.spruce
-    const S = 512
-    const [c, g] = cv(S, S)
-    g.fillStyle = sp.base
-    g.fillRect(0, 0, S, S)
-    const r = rng(231 + key.length)
-    for (let i = 0; i < 260; i++) {
-      const y = r() * S
-      const dark = r() < 0.65
-      g.strokeStyle = dark ? `rgba(${sp.dark},${0.1 + r() * 0.3})` : `rgba(${sp.light},${0.06 + r() * 0.2})`
-      g.lineWidth = 0.4 + r() * 2.2
-      const amp = r() * 7
-      const k = 1 + Math.floor(r() * 3)
-      const ph = r() * 6.28
-      g.beginPath()
-      for (let x = 0; x <= S; x += 8) {
-        const yy = y + Math.sin((x / S) * Math.PI * 2 * k + ph) * amp
-        x ? g.lineTo(x, yy) : g.moveTo(x, yy)
+    const W = 512
+    const H = 512
+    const [c, g] = cv(W, H)
+    const dark = sp.dark.split(',').map(Number)
+    const light = sp.light.split(',').map(Number)
+    const base = sp.base
+    const bc = [parseInt(base.slice(1, 3), 16), parseInt(base.slice(3, 5), 16), parseInt(base.slice(5, 7), 16)]
+    // периоды подобраны так, чтобы плитка стыковалась без шва: целое число клеток на всю плитку
+    const n1 = makeNoise(301 + key.length, 4, 4)
+    const n2 = makeNoise(302 + key.length, 8, 8)
+    const n3 = makeNoise(303 + key.length, 16, 256)
+    const r = rng(331 + key.length)
+    // сучки: положение, размер
+    const knots = Array.from({ length: 3 }, () => ({ x: r() * W, y: r() * H, rx: 10 + r() * 12, ry: 5 + r() * 6 }))
+    const img = g.createImageData(W, H)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        // смещение колец: плавная волна + искривление вокруг сучков
+        let off = (n1((x * 2) / W, (y * 4) / H) - 0.5) * 20 + (n2((x * 4) / W, (y * 16) / H) - 0.5) * 5
+        for (const k of knots) {
+          const dx = (x - k.x) / (k.rx * 3)
+          const dy = (y - k.y) / (k.ry * 5)
+          const q = Math.exp(-(dx * dx + dy * dy))
+          off += q * Math.sign(y - k.y || 1) * 14
+        }
+        const ring = Math.sin(((y + off) / H) * Math.PI * 2 * 16) * 0.5 + 0.5
+        // поздняя древесина — узкие тёмные полосы, ранняя — светлая широкая
+        const late = Math.pow(ring, 3.2)
+        const fibre = n3((x * 16) / W, (y * 256) / H) - 0.5 // тонкие продольные волокна
+        const broad = n2((x * 8) / W + 3, (y * 8) / H + 5) - 0.5 // крупная неравномерность тона
+        let t = 0.3 + late * 0.34 + fibre * 0.42 + broad * 0.22
+        t = Math.min(1, Math.max(0, t))
+        const lo = light
+        const hi = dark
+        let rr = lo[0] + (hi[0] - lo[0]) * t
+        let gg = lo[1] + (hi[1] - lo[1]) * t
+        let bb = lo[2] + (hi[2] - lo[2]) * t
+        // привязка к базовому цвету породы
+        rr = rr * 0.22 + bc[0] * 0.78
+        gg = gg * 0.22 + bc[1] * 0.78
+        bb = bb * 0.22 + bc[2] * 0.78
+        // тёмное в тени поздней древесины
+        const sh = 1 - late * 0.06
+        const i = (y * W + x) * 4
+        img.data[i] = clamp(rr * sh)
+        img.data[i + 1] = clamp(gg * sh)
+        img.data[i + 2] = clamp(bb * sh)
+        img.data[i + 3] = 255
       }
+    }
+    g.putImageData(img, 0, 0)
+    // сучки: тёмное ядро и светлый ореол
+    for (const k of knots) {
+      for (const [mul, col] of [[2.2, `rgba(${light.join(',')},0.0)`], [1, `rgba(${dark.join(',')},0.0)`]]) {
+        const gr = g.createRadialGradient(k.x, k.y, 0, k.x, k.y, k.rx * mul)
+        gr.addColorStop(0, mul === 1 ? `rgba(${dark.map((v) => v * 0.55).join(',')},0.85)` : `rgba(${dark.join(',')},0.18)`)
+        gr.addColorStop(0.55, mul === 1 ? `rgba(${dark.join(',')},0.45)` : `rgba(${dark.join(',')},0.08)`)
+        gr.addColorStop(1, col)
+        g.fillStyle = gr
+        g.beginPath()
+        g.ellipse(k.x, k.y, k.rx * mul, k.ry * mul, 0, 0, 6.3)
+        g.fill()
+      }
+    }
+    // редкие смоляные кармашки и трещинки
+    for (let i = 0; i < 5; i++) {
+      const x = r() * W
+      const y = r() * H
+      g.strokeStyle = `rgba(${dark.map((v) => v * 0.6).join(',')},${0.25 + r() * 0.25})`
+      g.lineWidth = 0.7
+      g.beginPath()
+      g.moveTo(x, y)
+      g.lineTo(x + 20 + r() * 40, y + (r() - 0.5) * 3)
       g.stroke()
     }
-    for (let i = 0; i < 5; i++) {
-      const x = r() * S
-      const y = r() * S
-      const gr = g.createRadialGradient(x, y, 0, x, y, 8)
-      gr.addColorStop(0, `rgba(${sp.dark},0.5)`)
-      gr.addColorStop(1, `rgba(${sp.dark},0)`)
-      g.fillStyle = gr
-      g.beginPath()
-      g.ellipse(x, y, 7, 13, 0, 0, 6.3)
-      g.fill()
-    }
-    noise(g, S, S, 7, 232)
     return toTexture(c, 2, 2)
   })
 

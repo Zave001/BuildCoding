@@ -19,8 +19,8 @@ export const CATALOG = {
   },
   nightstand: {
     // тумба с фото: 3 ящика, тёмно-вишнёвый фасад, латунные ручки; 40 × 50 × 60 см
-    name: 'Тумба 40×50', cat: 'storage', w: 0.4, d: 0.5, h: 0.6, support: true, topH: 0.6,
-    dims: '40×50×60 см', info: '3 ящика, вишня, латунные ручки (с фото)', defaults: {},
+    name: 'Тумба 50×40', cat: 'storage', w: 0.5, d: 0.4, h: 0.6, support: true, topH: 0.6,
+    dims: '50×40×60 см', info: '3 ящика, вишня, латунные ручки (с фото)', defaults: {},
   },
   speaker: {
     // Leem SPA-15: активная 2-полосная, НЧ 15″ + ВЧ 1″; габариты и вес по справочнику производителя
@@ -31,6 +31,11 @@ export const CATALOG = {
     // МФУ Brother серии DCP-15xx (как на фото): 385 × 340 × 255 мм, лоток открыт на ~8 см
     name: 'Принтер Brother МФУ', cat: 'tech', w: 0.385, d: 0.34, h: 0.255, onSurface: true,
     dims: '38,5×34×25,5 см', info: 'лазерное МФУ, на тумбу или стол', defaults: {},
+  },
+  rug: {
+    // ковёр с коротким ворсом: плоский, по нему можно ходить и ставить мебель
+    name: 'Ковёр', cat: 'decor', w: 2.0, d: 1.4, h: 0.02, flat: true,
+    dims: '200×140 см', info: 'короткий ворс, серо-бежевый', defaults: { c: '#b8ad9c' },
   },
   bed: {
     name: 'Кровать', cat: 'bedroom', w: 2.0, d: 2.1, h: 1.1, info: 'спинка 110, серый плед',
@@ -62,6 +67,7 @@ export const CATS = [
   ['storage', 'Хранение'],
   ['tech', 'Техника'],
   ['chairs', 'Кресла'],
+  ['decor', 'Декор'],
 ]
 
 export const BLANKETS = [['#9b9a9c', 'Серый'], ['#6c6e73', 'Графит'], ['#b4aa9c', 'Бежево-серый'], ['#7d8a82', 'Серо-зелёный']]
@@ -230,9 +236,9 @@ export function validate(cand, placed, d, sc, selfId) {
     if (rectsOverlap(r, zr)) return { ok: false, reason: 'Мешает: ' + zn.label }
   }
   for (const o of others) {
-    if (cat.overhead) break // экран висит над мебелью
+    if (cat.overhead || cat.flat) break // экран висит над мебелью, ковёр лежит под ней
     const oc = CATALOG[o.type]
-    if (oc.overhead) continue
+    if (oc.overhead || oc.flat) continue
     if ((cat.tuck || []).includes(o.type) || (oc.tuck || []).includes(cand.type)) continue
     if (rectsOverlap(r, rectOf(o))) return { ok: false, reason: 'Занято: ' + oc.name }
   }
@@ -266,7 +272,7 @@ export function stored(item, cand, res) {
 export function furnSegments(placed) {
   const s = []
   for (const it of placed) {
-    if (it.parentId != null || CATALOG[it.type].onSurface || CATALOG[it.type].overhead) continue
+    if (it.parentId != null || CATALOG[it.type].onSurface || CATALOG[it.type].overhead || CATALOG[it.type].flat) continue
     const c = corners(rectOf(it))
     for (let i = 0; i < 4; i++) s.push([c[i].x, c[i].z, c[(i + 1) % 4].x, c[(i + 1) % 4].z])
   }

@@ -6,6 +6,7 @@ import { SURF, SPECIES, COATINGS } from './data'
 import { stagesFor } from './data'
 import { Builder, frameMatrix, skinGeometry, outlinePoints } from './geom'
 import { foamTex, woolTex, drywallTex, woodTex, plywoodTex } from './textures'
+import { makeWenge } from '../furnTextures'
 
 const rectAround = (axis, pos, lo, hi, hw) =>
   axis === 's' ? [[lo, pos - hw], [hi, pos - hw], [hi, pos + hw], [lo, pos + hw]] : [[pos - hw, lo], [pos + hw, lo], [pos + hw, hi], [pos - hw, hi]]
@@ -85,7 +86,16 @@ function buildAll(model, cfg) {
     const bat = mk()
     if (sst.battens) g.battens.forEach((b) => bat.prism(rectAround(b.axis, b.pos, b.lo, b.hi, bw), sst.battens[0], sst.battens[1], undefined, b.axis === 't'))
     const boards = mk()
-    if (sst.boards) g.boards.forEach((b) => boards.prism(b.poly, sst.boards[0], sst.boards[1], b.num, b.axis === 't'))
+    if (sst.boards) {
+      g.boards.forEach((b, bi) => {
+        // у каждой доски свой оттенок и сдвиг рисунка: вагонка не выглядит «штампом»
+        const h = Math.sin((bi + 1) * 12.9898 + s.id.length * 78.233) * 43758.5453
+        const r1 = h - Math.floor(h)
+        const h2 = Math.sin((bi + 3) * 39.346 + 11.135) * 24634.6345
+        const r2 = h2 - Math.floor(h2)
+        boards.prism(b.poly, sst.boards[0], sst.boards[1], b.num, b.axis === 't', { tone: 0.88 + r1 * 0.2, du: r2 * 3.7, dv: r1 * 1.3 })
+      })
+    }
     const rev = mk()
     g.reveals.forEach((r) => rev.prism(r.poly, 0, sst.total))
 
@@ -223,11 +233,11 @@ export default function Renovation3D({ d, model, cfg, ui, stage, inRen = true, s
       dw2: std({ map: drywallTex(), color: '#c7cbc4', roughness: 0.92 }),
       screw: std({ color: '#3a3d42', roughness: 0.5, metalness: 0.5, side: THREE.DoubleSide }),
       batten: std({ map: woodTex('pine'), color: '#f3ead6', roughness: 0.85 }),
-      board: std({ map: woodTex(cfg.boards.species), color: coat.tint, roughness: 1 - coat.gloss * 0.6 }),
-      trim: std({ color: '#f1f1ee', roughness: 0.5 }),
+      board: std({ map: woodTex(cfg.boards.species), color: coat.tint, roughness: 1 - coat.gloss * 0.6, vertexColors: true }),
+      trim: cfg.trimColor === 'wenge' ? std({ map: makeWenge(), color: '#ffffff', roughness: 0.45 }) : std({ map: woodTex(cfg.boards.species), color: coat.tint, roughness: 0.55 }),
       sel: new THREE.MeshStandardMaterial({ color: '#ffb547', emissive: '#ff9a1f', emissiveIntensity: 0.9, roughness: 0.5 }),
     }
-  }, [cfg.boards.species, cfg.boards.coating])
+  }, [cfg.boards.species, cfg.boards.coating, cfg.trimColor])
   // слой «финишного» ГКЛ: окраска при шпаклёвке/покраске
   const lastSheet = cfg.drywall.layers === 2 ? 'dw2' : 'dw1'
   const paintOn = cfg.finish === 'paint' && reached('putty')

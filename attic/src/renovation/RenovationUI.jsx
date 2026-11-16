@@ -114,6 +114,19 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
         </div>
       </section>
       <section>
+        <h2>Дизайн-проект (финальный этап)</h2>
+        <small className="note">Шторы и подсветка появляются на этапе «Завершённый ремонт». Мебель и ковёр ставятся только через редактор. Шторы раздвигаются там же, где двери (при прогулке — клавишей взаимодействия).</small>
+        <div className="col">
+          <Chk label="Дизайн-проект включён" checked={cfg.design.enabled} onChange={(v) => set('design.enabled', v)} />
+          <Chk label="Шторы на окне кабинета" checked={cfg.design.curtains} disabled={!cfg.design.enabled} onChange={(v) => set('design.curtains', v)} />
+          <Chk label="LED-лента COB 3000 K — основной свет (спотов нет)" checked={cfg.design.led} disabled={!cfg.design.enabled} onChange={(v) => set('design.led', v)} />
+        </div>
+        <div className="grid">
+          <Num label="Яркость ленты" path="design.ledLevel" unit="%" />
+        </div>
+        <Seg value={cfg.trimColor} options={[['wood', 'Уголки: цвет вагонки'], ['wenge', 'Уголки: венге']]} onChange={(v) => set('trimColor', v)} />
+      </section>
+      <section>
         <h2>Потолок и режимы</h2>
         <small className="note">Под натяжным потолком {cfg.ceiling.gap} мм пространства, выше — фанера. После снятия натяжного потолка основание потолка — фанера.</small>
         <Seg value={cfg.ceiling.mode} options={[['frame', 'Профиль + ГКЛ'], ['plywood', 'На фанеру: рейки + вагонка']]} onChange={(v) => set('ceiling.mode', v)} />

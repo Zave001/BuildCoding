@@ -209,11 +209,13 @@ export class Builder {
     this.pos = []
     this.nor = []
     this.uv = []
+    this.col = []
     this.owners = []
     this.tris = 0
   }
 
-  prism(poly0, w0, w1, id, swapUV = false) {
+  /** vary = { tone, du, dv }: оттенок и сдвиг текстуры конкретной доски — соседние доски не повторяют друг друга */
+  prism(poly0, w0, w1, id, swapUV = false, vary = null) {
     let poly = poly0
     if (area(poly) < 0) poly = [...poly].reverse()
     const n = poly.length
@@ -228,7 +230,9 @@ export class Builder {
       }
       this.pos.push(p[0], p[1], p[2])
       this.nor.push(nr[0], nr[1], nr[2])
-      this.uv.push(u, v)
+      this.uv.push(u + (vary ? vary.du : 0), v + (vary ? vary.dv : 0))
+      const tn = vary ? vary.tone : 1
+      this.col.push(tn, tn, tn)
     }
     const tri = (a, b, c, nr, ua, ub, uc) => {
       push(a, nr, ...ua)
@@ -273,6 +277,7 @@ export class Builder {
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     g.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(this.uv), 2))
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.col), 3))
     g.applyMatrix4(this.M)
     if (this.M.determinant() < 0) {
       // отражённая система координат — переворачиваем обход треугольников

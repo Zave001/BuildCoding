@@ -223,12 +223,12 @@ function Dresser({ item }) {
   )
 }
 
-/* ---------- тумба 40 × 50 × 60: три ящика, вишня, латунные ручки (по фото) ---------- */
+/* ---------- тумба 50 × 40 × 60: три ящика, вишня, латунные ручки (по фото) ---------- */
 
 function Nightstand() {
   const m = M()
-  const W = 0.4
-  const D = 0.5
+  const W = 0.5
+  const D = 0.4
   const H = 0.6
   const t = 0.02 // толщина корпусных щитов
   const topT = 0.025
@@ -296,6 +296,20 @@ function Nightstand() {
           )}
         </group>
       ))}
+    </group>
+  )
+}
+
+/* ---------- ковёр 200 × 140: короткий ворс ---------- */
+
+function Rug({ item }) {
+  const m = M()
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ map: m.knit, color: item.c || '#b8ad9c', roughness: 1 }), [item.c])
+  return (
+    <group>
+      <Soft s={[2.0, 0.016, 1.4]} p={[0, 0.009, 0]} m={mat} r={0.006} />
+      {/* окантовка тоном темнее */}
+      <Soft s={[1.9, 0.004, 1.3]} p={[0, 0.0185, 0]} m={mat} r={0.002} />
     </group>
   )
 }
@@ -546,6 +560,7 @@ export function Model({ item }) {
     case 'nightstand': return <Nightstand />
     case 'speaker': return <Speaker />
     case 'printer': return <Printer />
+    case 'rug': return <Rug item={item} />
     case 'bed': return <Bed item={item} />
     case 'tv': return <TV item={item} />
     case 'chair': return <Chair item={item} />

@@ -131,7 +131,7 @@ function DoorUnit({ d, open }) {
   const { doorW: w, doorH: h, doorX: x, L } = d
   const D = d.wallT
   const wood = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e8e3da', roughness: 0.55 }), [])
-  const frame = useMemo(() => new THREE.MeshStandardMaterial({ color: '#f1eee8', roughness: 0.5 }), [])
+  const frame = useMemo(() => new THREE.MeshStandardMaterial({ color: '#3a2a22', roughness: 0.5 }), [])
   const metal = useMemo(() => new THREE.MeshStandardMaterial({ color: '#b9b9b9', roughness: 0.25, metalness: 0.85 }), [])
   const B = ({ p, sz, m = frame }) => (
     <mesh position={p} material={m} castShadow receiveShadow>
@@ -337,7 +337,7 @@ function ZoneOverlay({ d, hl, withWall }) {
 
 export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, setHl, view }) {
   const { L, W, kH, cH, cW, zEnd, zG } = d
-  const { doorWall, doorMesh = doorWall, doorUnit = doorWall, doorOpen, slideOpen, cabOpen, hatchOpen, roof, utility, facade, interactive, ceilCut, radHide } = view
+  const { ledMain, doorWall, doorMesh = doorWall, doorUnit = doorWall, doorOpen, slideOpen, cabOpen, hatchOpen, roof, utility, facade, interactive, ceilCut, radHide } = view
   const paintA = useMemo(() => makePaint(3), [])
   const paintB = useMemo(() => makePaint(11), [])
   const floorTex = useMemo(() => makeLaminate(floorKey), [floorKey])
@@ -406,7 +406,7 @@ export default function Room({ d, colors, floorKey, mode, gloss, showDims, hl, s
 
   return (
     <group>
-      <Lights d={d} mode={mode} cut={ceilCut} />
+      <Lights d={d} mode={mode} cut={ceilCut || ledMain} />
       <ZoneOverlay d={d} hl={hl} withWall={!!doorWall} />
 
       <mesh geometry={geoms.floor} rotation={[-Math.PI / 2, 0, 0]} receiveShadow {...ev('floor')}>

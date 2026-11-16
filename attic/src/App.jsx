@@ -12,6 +12,7 @@ import { computeRenovation } from './renovation/calc'
 import { renState, demoReached, wallThickness, wallBuiltAt, doorInstalledAt } from './renovation/stack'
 import { stagesFor } from './renovation/data'
 import Renovation3D from './renovation/Renovation3D'
+import Design3D from './renovation/Design3D'
 import Section3D, { SECTION_ORIGIN } from './renovation/Section3D'
 import RenovationUI from './renovation/RenovationUI'
 import Vent3D from './vent/Vent3D'
@@ -168,7 +169,7 @@ export default function App() {
   const updateItem = (id, patch) => setItems((l) => l.map((i) => (i.id === id ? { ...i, ...patch } : i)))
   const [locked, setLocked] = useState(false)
   const [scene, setScene] = useState({
-    doorWall: true, doorOpen: true, slideOpen: true, cabOpen: true, hatchOpen: false, roof: 'half', utility: true, facade: true,
+    doorWall: true, doorOpen: true, curtainOpen: true, slideOpen: true, cabOpen: true, hatchOpen: false, roof: 'half', utility: true, facade: true,
     ...SAVED.scene,
     ...(ROOFS[HASH.get('roof')] ? { roof: HASH.get('roof') } : {}),
   })
@@ -186,7 +187,11 @@ export default function App() {
   const wallSolid = scene.doorWall && (!showRen || !wallOn || wallBuiltAt(ren.cfg, ren.stage))
   const doorUnitOn = scene.doorWall && (!showRen || !wallOn || doorInstalledAt(ren.cfg, ren.stage))
   const doorMeshOn = scene.doorWall && (!showRen || !wallOn)
-  const sceneEff = useMemo(() => ({ ...scene, doorWall: wallSolid, doorUnit: doorUnitOn }), [scene, wallSolid, doorUnitOn])
+  // дизайн-проект (шторы, LED-лента) показывается на финальном этапе ремонта
+  const designOn = showRen && !!rmodel && ren.cfg.design.enabled && ren.stage >= stagesFor(ren.cfg).length - 1
+  const curtainsOn = designOn && ren.cfg.design.curtains
+  const ledOn = designOn && ren.cfg.design.led
+  const sceneEff = useMemo(() => ({ ...scene, doorWall: wallSolid, doorUnit: doorUnitOn, curtains: curtainsOn, curtainZ: (rmodel?.thick.windowWall ?? 0) + 0.12 }), [scene, wallSolid, doorUnitOn, curtainsOn, rmodel])
   const dCab = showRen && demoReached(ren.cfg, ren.stage) && rmodel?.raised ? rmodel.d : d // кабинет с поднятым потолком — скаты удлинены
   const segs = useMemo(() => walkSegments(dr, sceneEff), [dr, sceneEff])
   const zones = useMemo(() => roomZones(d, wallSolid, dCab), [d, wallSolid, dCab])
@@ -199,7 +204,7 @@ export default function App() {
       setItems((l) => l.map((i) => (i.id === sid ? { ...i, open: !i.open } : i)))
       return
     }
-    const key = { entry: 'doorOpen', slide: 'slideOpen', cabin: 'cabOpen', hatch: 'hatchOpen' }[id]
+    const key = { entry: 'doorOpen', curtain: 'curtainOpen', slide: 'slideOpen', cabin: 'cabOpen', hatch: 'hatchOpen' }[id]
     if (key) setScene((x) => ({ ...x, [key]: !x[key] }))
   }, [])
 
@@ -306,7 +311,7 @@ export default function App() {
           showDims={showDims && nav !== 'walk' && nav !== 'renovation' && nav !== 'vent'}
           hl={hl}
           setHl={setHl}
-          view={{ ...scene, doorWall: wallSolid, doorMesh: doorMeshOn, doorUnit: doorUnitOn, interactive: nav === 'edit', ceilCut: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.ceiling.removeStretch && ren.cfg.ceiling.gap > 0, radHide: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.radiatorOut }}
+          view={{ ...scene, ledMain: ledOn, doorWall: wallSolid, doorMesh: doorMeshOn, doorUnit: doorUnitOn, interactive: nav === 'edit', ceilCut: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.ceiling.removeStretch && ren.cfg.ceiling.gap > 0, radHide: showRen && demoReached(ren.cfg, ren.stage) && ren.cfg.radiatorOut }}
         />
         {rmodel && (
           <Renovation3D
@@ -322,6 +327,7 @@ export default function App() {
             onHanger={(surf, line) => setRsel((x) => ({ ...x, hanger: { surf, line } }))}
           />
         )}
+        {designOn && <Design3D model={rmodel} cfg={ren.cfg} curtainOpen={scene.curtainOpen} day={mode === 'day'} />}
         {rmodel?.vent && ren.cfg.vent.show && <Vent3D vent={rmodel.vent} cfg={ren.cfg} labels={nav === 'renovation' || nav === 'vent'} />}
         {nav === 'renovation' && rmodel && ren.ui.section && <Section3D model={rmodel} cfg={ren.cfg} ui={ren.ui} surfId={ren.ui.surface} />}
         <FurnitureLayer
@@ -436,6 +442,9 @@ export default function App() {
                 </label>
                 <label className="chk">
                   <input type="checkbox" checked={scene.doorOpen} disabled={!scene.doorWall} onChange={(e) => sc('doorOpen', e.target.checked)} /> Дверь открыта
+                </label>
+                <label className="chk">
+                  <input type="checkbox" checked={scene.curtainOpen} disabled={!curtainsOn} onChange={(e) => sc('curtainOpen', e.target.checked)} /> Шторы раздвинуты
                 </label>
                 <label className="chk">
                   <input type="checkbox" checked={scene.slideOpen} onChange={(e) => sc('slideOpen', e.target.checked)} /> Купе открыто
