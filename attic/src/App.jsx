@@ -168,6 +168,7 @@ export default function App() {
   }, [items])
   const updateItem = (id, patch) => setItems((l) => l.map((i) => (i.id === id ? { ...i, ...patch } : i)))
   const [locked, setLocked] = useState(false)
+  const [uiOff, setUiOff] = useState(false) // H — скрыть весь интерфейс поверх сцены (для чистого вида и скриншотов)
   const [scene, setScene] = useState({
     doorWall: true, doorOpen: true, curtainOpen: true, slideOpen: true, cabOpen: true, hatchOpen: false, roof: 'half', utility: true, facade: true,
     ...SAVED.scene,
@@ -241,6 +242,7 @@ export default function App() {
       if (e.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return
       if (e.code === 'KeyM' && !e.repeat) toggleNav()
       if (e.code === 'KeyB' && !e.repeat) goBuild()
+      if (e.code === 'KeyH' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) setUiOff((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -293,7 +295,7 @@ export default function App() {
     .reduce((s, [, v]) => s + v, 0)
 
   return (
-    <div className="app">
+    <div className={'app' + (uiOff ? ' ui-off' : '')}>
       <Canvas
         shadows
         dpr={[1, 2]}
@@ -631,18 +633,20 @@ export default function App() {
               <span><kbd>Esc</kbd> отпустить мышь</span>
               <span><kbd>E</kbd> / щелчок — дверь</span>
               <span><kbd>M</kbd> редактор</span>
+              <span><kbd>H</kbd> скрыть интерфейс</span>
             </div>
           </div>
         </div>
       )}
       {nav === 'walk' && locked && <div className="cross" />}
 
+      {uiOff && <div className="ui-badge"><kbd>H</kbd> — показать интерфейс</div>}
       <div className="hint">
         {nav === 'edit'
-          ? 'ЛКМ — вращать · ПКМ — сдвигать · колесо — приблизить · WASD / Пробел / Shift — полёт · колёсико зажато — осмотр · B — мебель · M — прогулка'
+          ? 'ЛКМ — вращать · ПКМ — сдвигать · колесо — приблизить · WASD / Пробел / Shift — полёт · колёсико зажато — осмотр · B — мебель · M — прогулка · H — скрыть интерфейс'
           : nav === 'build'
-            ? 'ЛКМ по предмету — переместить · стрелки — сдвиг (Alt — 1 см) · WASD / Пробел / Shift — полёт · колёсико зажато — осмотр · B — выйти'
-            : 'WASD — ходьба · мышь — осмотр · E — двери · Shift — быстрее · C — пригнуться · Esc — мышь · M — редактор'}
+            ? 'ЛКМ по предмету — переместить · стрелки — сдвиг (Alt — 1 см) · WASD / Пробел / Shift — полёт · колёсико зажато — осмотр · B — выйти · H — скрыть интерфейс'
+            : 'WASD — ходьба · мышь — осмотр · E — двери · Shift — быстрее · C — пригнуться · Esc — мышь · M — редактор · H — скрыть интерфейс'}
       </div>
     </div>
   )

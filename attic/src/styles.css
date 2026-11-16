@@ -320,3 +320,8 @@ tr.zone-h small { color: #8b96a1; font-weight: 400; margin-left: 6px; }
 .chk.hide-furn { padding: 6px 12px; border: 1px solid #ffb547; border-radius: 8px; color: #ffd08a; font-weight: 600; white-space: nowrap; }
 .chk.hide-furn.on { background: #ffb547; color: #1b1406; }
 .chk.hide-furn.on input { accent-color: #1b1406; }
+/* H — интерфейс скрыт: остаётся только сцена (подписи в 3D тоже прячутся) */
+.app.ui-off > :not(:first-child):not(.ui-badge) { display: none !important; }
+.app.ui-off > :first-child div:not(:has(canvas)) { display: none !important; }
+.ui-badge { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 50; padding: 6px 14px; border-radius: 8px; background: rgba(21, 24, 29, 0.82); color: #c7cfd6; font-size: 13px; pointer-events: none; animation: uiBadge 2.6s ease-out forwards; }
+@keyframes uiBadge { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
