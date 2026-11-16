@@ -261,6 +261,18 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
         <h2>Поверхности кабинета</h2>
         <div className="surfs">
           {SURF.map((s) => {
+            if (s.id === 'doorWall') {
+              // новая стена — не обшивка существующей поверхности: все её настройки в «Конструкция → Новая стена с дверью»
+              return (
+                <div key={s.id} className={'surf' + (ui.surface === s.id ? ' cur' : '')} onClick={() => { setUi({ surface: s.id }); setSel((x) => ({ ...x, surface: s.id })) }}>
+                  <b>{s.name}</b>
+                  <div className="row tight" onClick={(e) => e.stopPropagation()}>
+                    <Chk label="Возводить стену" checked={cfg.wall.enabled !== false} onChange={(v) => set('wall.enabled', v)} />
+                  </div>
+                  <small className="note">Профиль, шаг стоек, вата и развязка — на вкладке «Конструкция».</small>
+                </div>
+              )
+            }
             const c = cfg.surfaces[s.id]
             const custom = !WOOL_THICKNESSES.includes(c.woolT)
             return (
@@ -284,17 +296,27 @@ export default function RenovationUI({ ren, setRen, model, d, sel, setSel, onRes
           })}
         </div>
         <div className="row tight">
-          <button className="small" onClick={() => SURF.forEach((s) => set(`surfaces.${s.id}.wool`, true))}>Вата везде</button>
-          <button className="small" onClick={() => SURF.forEach((s) => set(`surfaces.${s.id}.wool`, false))}>Без ваты</button>
+          <button className="small" onClick={() => SURF.filter((s) => s.id !== 'doorWall').forEach((s) => set(`surfaces.${s.id}.wool`, true))}>Вата везде</button>
+          <button className="small" onClick={() => SURF.filter((s) => s.id !== 'doorWall').forEach((s) => set(`surfaces.${s.id}.wool`, false))}>Без ваты</button>
         </div>
       </section>
       <section>
         <h2>{SURF_BY_ID[ui.surface].name}</h2>
         <table className="lay"><tbody>
           <tr><td>Площадь (без проёмов)</td><td className="ar">{fmtN(ss.area, 2)} м²</td></tr>
-          <tr><td>Подвесов</td><td className="ar">{ss.hangers} шт</td></tr>
-          <tr><td>Профиль</td><td className="ar">{fmtN(ss.profLen, 1)} м</td></tr>
-          <tr><td>Вата</td><td className="ar">{ss.wool ? `${ss.wool} мм` : 'нет'}</td></tr>
+          {ui.surface === 'doorWall' && model.wall ? (
+            <>
+              <tr><td>Стоек CW{cfg.wall.frame}</td><td className="ar">{model.wall.qty.studCount} шт</td></tr>
+              <tr><td>Направляющих UD</td><td className="ar">{fmtN(model.wall.qty.trackLen, 1)} м</td></tr>
+              <tr><td>Вата</td><td className="ar">{model.wall.tw > 0 ? `${fmtN(model.wall.tw * 1000, 0)} мм` : 'нет'}</td></tr>
+            </>
+          ) : (
+            <>
+              <tr><td>Подвесов</td><td className="ar">{ss.hangers} шт</td></tr>
+              <tr><td>Профиль</td><td className="ar">{fmtN(ss.profLen, 1)} м</td></tr>
+              <tr><td>Вата</td><td className="ar">{ss.wool ? `${ss.wool} мм` : 'нет'}</td></tr>
+            </>
+          )}
           <tr><td>Листов ГКЛ</td><td className="ar">{ss.sheets.join(' + ')}</td></tr>
           {cfg.finish === 'boards' && <><tr><td>Рейки</td><td className="ar">{fmtN(ss.battens, 1)} м</td></tr><tr><td>Досок</td><td className="ar">{ss.boards} шт</td></tr></>}
         </tbody></table>

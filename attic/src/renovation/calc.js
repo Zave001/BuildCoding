@@ -5,7 +5,7 @@ export { stackOf } from './stack'
 import { computeVent, SYSTEMS } from '../vent/vent'
 import { genWall } from './wall'
 import { stackOf, innerSection, thicknessFinal, enabledOf, studyGeometry } from './stack'
-import { makeSurfaces, bandQuads, quadPoly, quadLen, quadSlanted, lineSegs, positions, area, perimeter, clipConvex, subRect, rectPoly, insidePoly, packLengths } from './geom'
+import { makeSurfaces, attachMiter, bandQuads, quadPoly, quadLen, quadSlanted, lineSegs, positions, area, perimeter, clipConvex, subRect, rectPoly, insidePoly, packLengths } from './geom'
 
 const EPS = 1e-6
 const sum = (a) => a.reduce((s, v) => s + v, 0)
@@ -192,14 +192,27 @@ function genSurface(surf, cfg, st, d, extra = {}) {
       }
     }
 
+    // горизонтальные доски на скате: скат продлён до плоскости потолочной отделки — добавляются доски (строки) выше
+    let bsurf = surf
+    let BB = B
+    const mt0 = surf.miter
+    if (mt0 && axBd === 's' && st.boards) {
+      const e = mt0.ext(st.boards[1])
+      if (e > 0) {
+        const tr = mt0.end === 'hi' ? [B.t[0], B.t[1] + e] : [B.t[0] - e, B.t[1]]
+        BB = { ...B, t: tr }
+        bsurf = { ...surf, bounds: BB, range: (axis, p) => (axis === 's' ? (p >= tr[0] - EPS && p <= tr[1] + EPS ? surf.range('s', Math.min(Math.max(p, B.t[0]), B.t[1])) : null) : surf.range(axis, p)) }
+        R.boardExt = e
+      }
+    }
     const ww = bdc.working / 1000
     const maxStock = Math.max(...bdc.stocks)
     let n = 0
     let row = 0
-    for (let p0 = B[axBt][0]; p0 < B[axBt][1] - EPS; p0 += ww, row++) {
-      const p1 = Math.min(p0 + ww, B[axBt][1])
+    for (let p0 = BB[axBt][0]; p0 < BB[axBt][1] - EPS; p0 += ww, row++) {
+      const p1 = Math.min(p0 + ww, BB[axBt][1])
       // зазор между досками 1,2 мм — видимый шов; номинальная рабочая ширина в таблице не меняется
-      for (const q of bandQuads(surf, axBd, p0 + 0.0006, p1 - 0.0006, 0)) {
+      for (const q of bandQuads(bsurf, axBd, p0 + 0.0006, p1 - 0.0006, 0)) {
         let lo0 = q.a0lo
         let lo1 = q.a1lo
         const pieces = []
@@ -219,7 +232,12 @@ function genSurface(surf, cfg, st, d, extra = {}) {
           if (p1 - p0 < ww - 0.002) notes.push('подрезка по ширине')
           if (pc.joint || (pieces.length > 1 && pc !== pieces[0])) notes.push('стык на рейке')
           n += 1
-          R.boards.push({ num: `${meta.code}-${pad(n)}`, surf: surf.id, poly: quadPoly(pc), len: quadLen(pc), width: p1 - p0, axis: axBd, row, notes: [...new Set(notes)] })
+          // подрезка под потолок: доска у верхнего торца ската длиннее на величину продления на её лицевой стороне
+          const mt = surf.miter
+          const atEnd = mt && axBd === 't' && st.boards && (mt.end === 'hi' ? pc.a0hi >= mt.len - 1e-6 || pc.a1hi >= mt.len - 1e-6 : pc.a0lo <= 1e-6 || pc.a1lo <= 1e-6)
+          const mExt = atEnd ? mt.ext(st.boards[1]) : 0
+          if (mExt > 0) notes.push('удлинена до потолка')
+          R.boards.push({ num: `${meta.code}-${pad(n)}`, surf: surf.id, poly: quadPoly(pc), len: quadLen(pc) + mExt, width: p1 - p0, axis: axBd, row, notes: [...new Set(notes)] })
         }
       }
     }
@@ -333,6 +351,7 @@ export function computeRenovation(dIn, cfg) {
   const st = stacks.kneeL
   const thick = thicknessFinal(cfg)
   const surfaces = makeSurfaces(d, thick.windowWall, thick.doorWall, !cfg.radiatorOut)
+  attachMiter(surfaces, thick.ceiling) // скаты продлеваются до нижней плоскости потолочной отделки
   const enabled = Object.fromEntries(SURF.map((s) => [s.id, enabledOf(cfg, s.id)]))
   const gen = {}
   // новая стена с дверью: каркас, вата, ГКЛ — своя конструкция; на её поверхности в кабинете остаётся только чистовая отделка
@@ -617,6 +636,12 @@ export function computeRenovation(dIn, cfg) {
     const ds = d.slant - d0.slant
     const slopeDa = 2 * ds * (surfaces.slopeL.bounds.s[1] - surfaces.slopeL.bounds.s[0])
     info.push(`Натяжной потолок снимается: основание — фанера на ${cfg.ceiling.gap} мм выше (потолок ${fmtN(d0.cH, 2)} → ${fmtN(d.cH, 2)} м до отделки). Косые части стен удлиняются на ${fmtN(ds * 100, 1)} см (${fmtN(d0.slant, 2)} → ${fmtN(d.slant, 2)} м), их площадь растёт на ${fmtN(slopeDa, 2)} м²; ширина плоского потолка ${fmtN(d0.cW, 2)} → ${fmtN(d.cW, 2)} м. Отделка скатов и количество вагонки пересчитаны по удлинённым скатам.`)
+  }
+  {
+    const mt = surfaces.slopeL.miter
+    const wl = cfg.finish === 'boards' && stacks.slopeL.boards ? stacks.slopeL.boards[1] : stacks.slopeL.total
+    const e = mt && enabled.slopeL ? mt.ext(wl) : 0
+    if (e > 0.001) info.push(`Подрезка скатов под потолок: слои скатов (${fmtN(thick.slopeL * 1000, 0)} мм) толще отделки потолка (${fmtN(thick.ceiling * 1000, 0)} мм), поэтому скат продлевается до нижней плоскости потолка: на лицевой стороне +${fmtN(e * 100, 1)} см по скату с каждой стороны. ${cfg.finish === 'boards' ? 'Доски на скатах ' + (cfg.boardDir === 'horizontal' ? 'добавлены по высоте (строки доведены до потолка)' : 'удлинены у верхнего торца') + ' и включены в раскладку и смету.' : ''}`)
   }
   if (stacks.ceiling.mode === 'plywood') {
     const bl = gen.ceiling.battens.filter((b) => b.kind === 'main').map((b) => b.hi - b.lo)

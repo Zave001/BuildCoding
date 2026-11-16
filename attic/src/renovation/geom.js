@@ -48,6 +48,25 @@ export function makeSurfaces(d, Tw, Td, niche = false) {
   return out
 }
 
+/**
+ * Примыкание скатов к потолку: слои ската толще слоя потолка (потолок на фанере: рейки + вагонка), поэтому торец ската,
+ * обрезанный перпендикулярно скату, оставляет клин-щель до нижней плоскости потолочной отделки. Скат продлевается
+ * (подрезка под потолок): на глубине w слой доходит до плоскости y = cH − Tc. Возвращает miter-описание или null.
+ */
+export function attachMiter(surfaces, Tc) {
+  for (const id of ['slopeL', 'slopeR']) {
+    const s = surfaces[id]
+    const sin = Math.abs(s.ey[1])
+    if (sin < 1e-6) continue
+    const cos = Math.abs(s.ey[0])
+    s.miter = {
+      end: s.ey[1] > 0 ? 'hi' : 'lo',
+      len: s.bounds.t[1],
+      ext: (w) => Math.max(0, (w * cos - Tc) / sin),
+    }
+  }
+}
+
 export const frameMatrix = (surf) => {
   const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(...surf.ex), new THREE.Vector3(...surf.ey), new THREE.Vector3(...surf.n))
   m.setPosition(...surf.O)
@@ -186,6 +205,7 @@ export const insidePoly = (p, poly) => {
 export class Builder {
   constructor(surf) {
     this.M = frameMatrix(surf)
+    this.miter = surf.miter || null
     this.pos = []
     this.nor = []
     this.uv = []
@@ -199,7 +219,13 @@ export class Builder {
     const n = poly.length
     if (n < 3) return
     const start = this.tris
+    const mt = this.miter
     const push = (p, nr, u, v) => {
+      if (mt) {
+        const e = mt.ext(p[2])
+        if (e > 0 && mt.end === 'hi' && Math.abs(p[1] - mt.len) < 1e-6) p = [p[0], p[1] + e, p[2]]
+        else if (e > 0 && mt.end === 'lo' && Math.abs(p[1]) < 1e-6) p = [p[0], p[1] - e, p[2]]
+      }
       this.pos.push(p[0], p[1], p[2])
       this.nor.push(nr[0], nr[1], nr[2])
       this.uv.push(u, v)

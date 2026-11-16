@@ -3,7 +3,7 @@
 import { SURF, PROFILE_TYPES, stagesFor } from './data'
 
 export const EDGE_IDS = ['kneeL', 'slopeL', 'ceiling', 'slopeR', 'kneeR']
-export const enabledOf = (cfg, id) => cfg.surfaces[id]?.enabled !== false
+export const enabledOf = (cfg, id) => (id === 'doorWall' ? cfg.wall?.enabled !== false : cfg.surfaces[id]?.enabled !== false)
 
 
 /**
